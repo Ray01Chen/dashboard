@@ -1,0 +1,9 @@
+{
+  "dataSource": "sample",
+  "initialMo": "3572611722",
+  "sampleDataFile": "data/work-orders.sample.json",
+  "autoRefresh": {
+    "enabled": true,
+    "intervalSeconds": 30
+  }
+}

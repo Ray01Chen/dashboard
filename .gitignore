@@ -1,0 +1,9 @@
+node_modules/
+.next/
+.env
+.env.*
+*.log
+*.tsbuildinfo
+__pycache__/
+# Server-only JSON contains secrets. Never commit populated credentials.
+/config/mfg-api.json
