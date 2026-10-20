@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # MES 工單生產監控 Dashboard (V3)
 
 Next.js 15 + React 19 + TypeScript，**不需要 Python**。Dashboard 顯示主工單與子工單、24 個 MES 欄位、生產數量、CSV 匯出。
@@ -137,3 +138,6 @@ production-efficiency-frontend/
 ## 驗證
 
 `npm run check:config` 可離線檢查設定格式、數值範圍與範例 JSON。`npm run build` 用於完整 Next.js 編譯；正式 MES 網路連線必須在公司網路／VPN 驗證。
+=======
+# dashboard
+>>>>>>> daa95c1ec570938c5968740182d1c5c3b467c0f2

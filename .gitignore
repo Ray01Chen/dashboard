@@ -7,4 +7,3 @@ node_modules/
 __pycache__/
 # Server-only JSON contains secrets. Never commit populated credentials.
 /config/mfg-api.json
-/data/work-orders.sample.json
