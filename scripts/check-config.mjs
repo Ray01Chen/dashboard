@@ -30,6 +30,10 @@ for (const [key, min, max] of [
   ["timeoutMs", 1000, 120000], ["tokenExpirySafetySeconds", 0, 600],
   ["fallbackTokenExpiresSeconds", 60, 86400], ["concurrentRequests", 1, 20],
 ]) assert.ok(Number.isInteger(api.request[key]) && api.request[key] >= min && api.request[key] <= max, `Invalid ${key}`);
+if (api.request.maxRequestsPerMinute !== undefined) assert.ok(
+  Number.isInteger(api.request.maxRequestsPerMinute) &&
+  api.request.maxRequestsPerMinute >= 1 && api.request.maxRequestsPerMinute <= 600,
+  "Invalid maxRequestsPerMinute");
 
 // Fixtures verify the two response shapes; runtime requests only use the MES APIs.
 const line = json(path.join(root, "data/production-lines.sample.json"));

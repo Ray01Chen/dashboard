@@ -52,12 +52,13 @@ function Metric({ label, value, note }: { label: string; value: string; note?: s
   return <div className="metric-card"><span>{label}</span><strong>{value}</strong>{note && <small>{note}</small>}</div>;
 }
 
-function LoadingStatus({ message, event, language, compact = false }: {
-  message: string; event: ApiProgress | null; language: Language; compact?: boolean;
+function LoadingStatus({ message, event, language, timeZone, compact = false }: {
+  message: string; event: ApiProgress | null; language: Language; timeZone: string; compact?: boolean;
 }) {
   const t = translations[language];
   const step = event?.stage === "oauth" ? t.oauthStep : event?.stage === "order" ? t.orderStep : t.lineStep;
-  const detail = event?.attempt
+  const detail = event?.retryAt && Date.parse(event.retryAt) > Date.now()
+    ? `${t.rateLimitWaiting} ${formatTimestamp(event.retryAt, language, timeZone)}` : event?.attempt
     ? `${t.trying} ${step} ${event.attempt}/${event.maxAttempts}${event.line ? ` · ${event.factory} / ${event.line}` : ""}`
     : event?.total ? `${event.completed || 0}/${event.total} ${t.completed}` : t.connecting;
   return <div className={`loading-status ${compact ? "compact" : "panel"}`} role="status" aria-live="polite">
@@ -237,7 +238,7 @@ export default function Dashboard({ initialSettings }: { initialSettings: Settin
     try {
       const result = await getDashboard(factory, signal, event => {
         if (id === requestId.current && !signal.aborted) setApiProgress(event);
-      });
+      }, manualRefresh);
       if (id === requestId.current && !signal?.aborted) {
         const paused = nextAutoRefreshPaused(pausedFactories.current.has(factory), manualRefresh, result,
           refreshSettingsRef.current.retryOnError);
@@ -475,7 +476,9 @@ export default function Dashboard({ initialSettings }: { initialSettings: Settin
           onChange={event => setDraft({ ...draft, apiRequest: { ...draft.apiRequest, fallbackTokenExpiresSeconds: Number(event.target.value) } })} /></label>
         <label>{t.concurrentRequests}<input type="number" min="1" max="20" value={draft.apiRequest.concurrentRequests}
           onChange={event => setDraft({ ...draft, apiRequest: { ...draft.apiRequest, concurrentRequests: Number(event.target.value) } })} /></label>
-      </div><p className="help-text">{t.sourceHint}</p>
+        <label>{t.maxRequestsPerMinute}<input type="number" min="1" max="600" value={draft.apiRequest.maxRequestsPerMinute ?? 18}
+          onChange={event => setDraft({ ...draft, apiRequest: { ...draft.apiRequest, maxRequestsPerMinute: Number(event.target.value) } })} /></label>
+      </div><p className="help-text">{t.rateLimitHint}</p><p className="help-text">{t.sourceHint}</p>
       <div className="settings-subhead"><h2>{t.factorySettings}</h2><button className="button subtle" onClick={() =>
         setFactoriesDraft([...factoriesDraft, { name: "", mesFactory: "", enabled: true, lines: [] }])}>+ {t.addFactory}</button></div>
       {factoriesDraft.map((factory, index) => <div className="factory-editor" key={index}>
@@ -532,7 +535,7 @@ export default function Dashboard({ initialSettings }: { initialSettings: Settin
           <button className="button subtle" disabled={!selected.orders.length}
             onClick={() => exportCsv(selected, language, settings.timeZone)}>{t.export}</button></div>
         {detailPending && selected.orders.length > 0 &&
-          <LoadingStatus message={t.loadingDetails} event={detailProgress} language={language} compact />}
+          <LoadingStatus message={t.loadingDetails} event={detailProgress} language={language} timeZone={settings.timeZone} compact />}
         {selected.orders.length ? <div className="order-layout">
           {/* The selected record is the primary content; the compact family list is a navigation control. */}
           <section className="panel order-details"><div className="detail-head"><div><span className="eyebrow">{t.orderDetail}</span>
@@ -560,7 +563,7 @@ export default function Dashboard({ initialSettings }: { initialSettings: Settin
               </button>;
             })}</div>
           </aside>
-        </div> : detailPending ? <LoadingStatus message={t.loadingDetails} event={detailProgress} language={language} />
+        </div> : detailPending ? <LoadingStatus message={t.loadingDetails} event={detailProgress} language={language} timeZone={settings.timeZone} />
           : <div className="panel empty">{selected.detailError ? t.noDetail : t.noOrders}</div>}
         <div className="section-title"><div><span className="eyebrow">{t.lineMetrics}</span><h2>{t.equipment}</h2></div></div>
         <LineInformationSections info={selected.information} language={language} timeZone={settings.timeZone}
@@ -574,14 +577,14 @@ export default function Dashboard({ initialSettings }: { initialSettings: Settin
       </div>
         <button className="button subtle" disabled={pending}
           onClick={() => void refresh(selectedFactory, true)}>{pending ? t.refreshing : t.refresh}</button></div>}
-      {pending && data && <LoadingStatus message={t.refreshing} event={apiProgress} language={language} compact />}
+      {pending && data && <LoadingStatus message={t.refreshing} event={apiProgress} language={language} timeZone={settings.timeZone} compact />}
       {error && <div className="alert" role="alert"><strong>{t.error}:</strong> {error}
         <button onClick={() => void refresh(selectedFactory, true)}>{t.retry}</button></div>}
       {saveMessage && <p className="form-message" role="status">{saveMessage}</p>}
       {!selectedFactory ? <div className="panel empty">{t.noConfigured}</div> :
         !data && autoRefreshPaused && !shouldAutoRefresh(settings.autoRefresh, autoRefreshPaused) && !pending
           ? <div className="panel empty">{t.autoRefreshPaused}</div> :
-        !data && (!error || pending) ? <LoadingStatus message={t.loading} event={apiProgress} language={language} /> :
+        !data && (!error || pending) ? <LoadingStatus message={t.loading} event={apiProgress} language={language} timeZone={settings.timeZone} /> :
         !data && error ? <div className="panel empty">{retryingAfterError ? t.autoRefreshRetrying : t.error}</div> :
         lines.length ? <div className="line-list">{lines.map(line => {
               const info = line.information;

@@ -16,6 +16,7 @@ export type ApiRequestSettings = {
   tokenExpirySafetySeconds: number;
   fallbackTokenExpiresSeconds: number;
   concurrentRequests: number;
+  maxRequestsPerMinute: number;
 };
 
 export type SettingsPayload = DashboardSettings & { apiRequest: ApiRequestSettings };
@@ -83,6 +84,7 @@ export type ApiProgress = {
   stage: "oauth" | "line" | "order";
   attempt: number;
   maxAttempts: number;
+  retryAt?: string;
   factory?: string;
   line?: string;
   completed?: number;
@@ -151,9 +153,9 @@ async function streamedJson<T>(url: string, signal?: AbortSignal,
 }
 
 export async function getDashboard(factory: string, signal?: AbortSignal,
-  onProgress?: (event: ApiProgress) => void): Promise<DashboardPayload> {
+  onProgress?: (event: ApiProgress) => void, force = false): Promise<DashboardPayload> {
   const payload = await streamedJson<DashboardPayload>(
-    `/api/production-lines?factory=${encodeURIComponent(factory)}&stream=1`, signal, onProgress);
+    `/api/production-lines?factory=${encodeURIComponent(factory)}&stream=1${force ? "&force=1" : ""}`, signal, onProgress);
   if (!payload || !Array.isArray(payload.lines)) throw new Error("Invalid production line response.");
   return payload;
 }

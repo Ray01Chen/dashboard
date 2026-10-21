@@ -4,11 +4,15 @@ import type { LineInformation, ManufacturingResponse } from "../api";
 import { parseLineInformation, parseWorkOrderResponse } from "./mes-response";
 import type { ManufacturingConfig } from "./mfg-config";
 
-export type MesAttempt = { stage: "oauth" | "line" | "order"; attempt: number; maxAttempts: number };
+export type MesAttempt = { stage: "oauth" | "line" | "order"; attempt: number; maxAttempts: number; retryAt?: string };
 export type ReportAttempt = (event: MesAttempt) => void;
 
 let tokenCache: { key: string; token: string; expiresAt: number } | null = null;
 let tokenRequest: { key: string; promise: Promise<string> } | null = null;
+type RateState = { starts: number[]; cooldownUntil: number };
+const sharedRuntime = globalThis as typeof globalThis & { __mesRateStates?: Map<string, RateState> };
+const rateStates = sharedRuntime.__mesRateStates ??= new Map<string, RateState>();
+const minuteMs = 60_000;
 
 export class MesApiError extends Error {
   constructor(public readonly status: number, message: string) {
@@ -22,11 +26,78 @@ function configKey(config: ManufacturingConfig): string {
     config.request.tokenExpirySafetySeconds, config.request.fallbackTokenExpiresSeconds].join("\0")).digest("hex");
 }
 
+function rateState(config: ManufacturingConfig): RateState {
+  // Quota belongs to the MES application, so editing timeout or token lifetime must not reset its budget.
+  const key = createHash("sha256").update([config.oauth.url, config.oauth.clientId,
+    config.oauth.clientSecret].join("\0")).digest("hex");
+  let state = rateStates.get(key);
+  if (!state) { state = { starts: [], cooldownUntil: 0 }; rateStates.set(key, state); }
+  return state;
+}
+
+const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+function nextAccessTime(value: string): number {
+  // The MES gateway uses "2026-Oct-21 08:01:00+0000 UTC", which is not an ISO date.
+  const match = /^(\d{4})-([A-Za-z]{3})-(\d{1,2}) (\d{2}:\d{2}:\d{2})([+-]\d{2})(\d{2}) UTC$/.exec(value);
+  if (!match) return Date.parse(value);
+  const month = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+    .indexOf(match[2].toLowerCase()) + 1;
+  if (!month) return NaN;
+  return Date.parse(`${match[1]}-${String(month).padStart(2, "0")}-${match[3].padStart(2, "0")}` +
+    `T${match[4]}${match[5]}:${match[6]}`);
+}
+
+// One budget is shared by every browser request handled by this server process.
+async function waitForMesSlot(config: ManufacturingConfig, onWait?: (retryAt: string) => void): Promise<void> {
+  const state = rateState(config);
+  while (true) {
+    const now = Date.now();
+    while (state.starts.length && state.starts[0] <= now - minuteMs) state.starts.shift();
+    const budget = config.request.maxRequestsPerMinute;
+    const budgetReady = state.starts.length >= budget ? state.starts[state.starts.length - budget] + minuteMs : now;
+    const ready = Math.max(state.cooldownUntil, budgetReady);
+    if (ready <= now) { state.starts.push(now); return; }
+    onWait?.(new Date(ready).toISOString());
+    await pause(ready - now);
+  }
+}
+
+async function noteThrottle(config: ManufacturingConfig, response: Response): Promise<number> {
+  const now = Date.now();
+  const hinted: number[] = [];
+  const retryAfter = response.headers.get("Retry-After");
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    const parsed = Number.isFinite(seconds) ? now + seconds * 1000 : Date.parse(retryAfter);
+    if (Number.isFinite(parsed) && parsed > now) hinted.push(parsed);
+  }
+  const body: unknown = await response.json().catch(() => null);
+  if (body && typeof body === "object" && "nextAccessTime" in body &&
+    typeof body.nextAccessTime === "string") {
+    const parsed = nextAccessTime(body.nextAccessTime);
+    if (Number.isFinite(parsed) && parsed > now) hinted.push(parsed);
+  }
+  const until = Math.max(now + 1000, hinted.length ? Math.max(...hinted) : now + 30_000);
+  const state = rateState(config);
+  state.cooldownUntil = Math.max(state.cooldownUntil, until);
+  return state.cooldownUntil;
+}
+
+async function waitForCooldown(config: ManufacturingConfig, onWait?: (retryAt: string) => void): Promise<void> {
+  const state = rateState(config);
+  while (state.cooldownUntil > Date.now()) {
+    onWait?.(new Date(state.cooldownUntil).toISOString());
+    await pause(state.cooldownUntil - Date.now());
+  }
+}
+
 async function requestToken(config: ManufacturingConfig, report?: ReportAttempt): Promise<string> {
   const { url, clientId, clientSecret } = config.oauth;
   if (!clientId || !clientSecret) throw new MesApiError(503, "OAuth credentials are missing in server configuration.");
   let response: Response;
   for (let attempt = 0; ; attempt++) {
+    await waitForCooldown(config, retryAt => report?.({ stage: "oauth", attempt: attempt + 1, maxAttempts: 3, retryAt }));
     report?.({ stage: "oauth", attempt: attempt + 1, maxAttempts: 3 });
     try {
       response = await fetch(url, {
@@ -41,7 +112,12 @@ async function requestToken(config: ManufacturingConfig, report?: ReportAttempt)
       if (attempt < 2) { await retryPause(attempt); continue; }
       throw new MesApiError(502, "OAuth request failed after 3 attempts. Check network or VPN access.");
     }
-    if ([429, 500, 502, 503, 504].includes(response.status) && attempt < 2) {
+    if (response.status === 429) {
+      const until = await noteThrottle(config, response);
+      if (attempt < 2) continue;
+      throw new MesApiError(429, `OAuth rate limit reached. Next access: ${new Date(until).toISOString()}.`);
+    }
+    if ([500, 502, 503, 504].includes(response.status) && attempt < 2) {
       await retryPause(attempt);
       continue;
     }
@@ -83,6 +159,7 @@ async function authenticatedGet(config: ManufacturingConfig, url: string,
   while (true) {
     const token = await accessToken(config, report);
     let response: Response;
+    await waitForMesSlot(config, retryAt => report?.({ stage, attempt: gatewayRetries + 1, maxAttempts: 3, retryAt }));
     report?.({ stage, attempt: gatewayRetries + 1, maxAttempts: 3 });
     try {
       response = await fetch(url, {
@@ -98,7 +175,12 @@ async function authenticatedGet(config: ManufacturingConfig, url: string,
       tokenCache = null;
       continue;
     }
-    if ([404, 429, 500, 502, 503, 504].includes(response.status) && gatewayRetries < 2) {
+    if (response.status === 429) {
+      const until = await noteThrottle(config, response);
+      if (gatewayRetries < 2) { gatewayRetries++; continue; }
+      throw new MesApiError(429, `MES rate limit reached. Next access: ${new Date(until).toISOString()}.`);
+    }
+    if ([404, 500, 502, 503, 504].includes(response.status) && gatewayRetries < 2) {
       gatewayRetries++;
       await retryPause(gatewayRetries - 1);
       continue;

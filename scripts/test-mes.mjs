@@ -12,15 +12,16 @@ const json = file => JSON.parse(fs.readFileSync(path.join(root, file), "utf8"));
 const lineFixture = json("data/production-lines.sample.json");
 const orderFixture = json("data/work-orders.sample.json");
 
-function loadTs(file, fetchImpl = fetch, modules = {}) {
+function loadTs(file, fetchImpl = fetch, modules = {}, globals = {}) {
   const source = fs.readFileSync(path.join(root, file), "utf8");
   const code = ts.transpileModule(source, { compilerOptions: {
     module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true,
   } }).outputText;
   const module = { exports: {} };
   const localRequire = name => name === "server-only" ? {} : name in modules ? modules[name] : require(name);
-  new Function("require", "module", "exports", "fetch", "AbortSignal", "Buffer", "setTimeout", code)(
-    localRequire, module, module.exports, fetchImpl, AbortSignal, Buffer, setTimeout);
+  new Function("require", "module", "exports", "fetch", "AbortSignal", "Buffer", "setTimeout", "Date", "globalThis", code)(
+    localRequire, module, module.exports, fetchImpl, AbortSignal, Buffer,
+    globals.setTimeout || setTimeout, globals.Date || Date, globals.globalThis || {});
   return module.exports;
 }
 
@@ -32,9 +33,19 @@ const apiConfig = {
     lineInformation: { url: "https://test.invalid/api/{mesFactory}/line/information/{line}" },
     workOrderDetail: { url: "https://test.invalid/api/{mesFactory}/MO/information/{mo}" },
   },
-  request: { timeoutMs: 2000, tokenExpirySafetySeconds: 60, fallbackTokenExpiresSeconds: 300, concurrentRequests: 4 },
+  request: { timeoutMs: 2000, tokenExpirySafetySeconds: 60, fallbackTokenExpiresSeconds: 300,
+    concurrentRequests: 4, maxRequestsPerMinute: 18 },
 };
 const response = (body, status = 200) => new Response(JSON.stringify(body), { status });
+function fakeClock(start) {
+  let now = start;
+  class ClockDate extends Date {
+    constructor(...args) { super(...(args.length ? args : [now])); }
+    static now() { return now; }
+  }
+  return { Date: ClockDate, setTimeout: (callback, delay) => { now += Math.max(0, delay); queueMicrotask(callback); },
+    now: () => now, advance: ms => { now += ms; } };
+}
 const factory = (name, lines, enabled = true, mesFactory = "DET_HP") => ({
   name, mesFactory, enabled, lines: lines.map(([line, lineEnabled = true]) => ({ name: line, enabled: lineEnabled })),
 });
@@ -96,8 +107,10 @@ test("settings accept IANA zones and validate all editable MES request values", 
   assert.throws(() => config.validateSettings({ ...settings, factories: [factory("BP9P1", [["SNT23"], ["SNT23"]])] }),
     /unique/);
   assert.deepEqual(config.validateApiRequest(apiConfig.request), apiConfig.request);
+  assert.equal(config.validateApiRequest({ ...apiConfig.request, maxRequestsPerMinute: undefined }).maxRequestsPerMinute, 18);
   assert.throws(() => config.validateSettings({ ...settings, timeZone: "Invalid/Zone" }), /Invalid dashboard/);
   assert.throws(() => config.validateApiRequest({ ...apiConfig.request, concurrentRequests: 0 }), /Invalid MES request/);
+  assert.throws(() => config.validateApiRequest({ ...apiConfig.request, maxRequestsPerMinute: 0 }), /Invalid MES request/);
 });
 
 test("line then work order flow uses both templates and retries transient MES failures", async () => {
@@ -141,6 +154,44 @@ test("MES failures remain visible after the retry limit", async () => {
   const client = loadTs("lib/server/mfg-client.ts", mockFetch, { "./mes-response": parser });
   await assert.rejects(client.fetchLineInformation(apiConfig, "DET_HP", "SNT23"), /HTTP 503/);
   assert.equal(count, 3);
+});
+
+test("WSO2 900803 waits until nextAccessTime instead of retrying in a burst", async () => {
+  const clock = fakeClock(Date.parse("2026-10-21T08:00:00Z"));
+  const starts = [];
+  const seen = [];
+  const mockFetch = async url => {
+    if (String(url).endsWith("/oauth2/token")) return response({ access_token: "test-token", expires_in: 300 });
+    starts.push(clock.now());
+    return starts.length === 1
+      ? response({ code: "900803", message: "Message throttled out",
+        nextAccessTime: "2026-Oct-21 08:01:00+0000 UTC" }, 429)
+      : response(lineFixture);
+  };
+  const client = loadTs("lib/server/mfg-client.ts", mockFetch, { "./mes-response": parser }, clock);
+  const line = await client.fetchLineInformation(apiConfig, "DET_HP", "SNT23", event => seen.push(event));
+  assert.equal(line.CURRENT_MO, lineFixture.CURRENT_MO);
+  assert.deepEqual(starts, [Date.parse("2026-10-21T08:00:00Z"), Date.parse("2026-10-21T08:01:00Z")]);
+  assert.ok(seen.some(event => event.retryAt === "2026-10-21T08:01:00.000Z"));
+});
+
+test("one server-wide minute budget covers separate route modules without slowing the initial burst", async () => {
+  const clock = fakeClock(Date.parse("2026-10-21T08:00:00Z"));
+  const globals = { ...clock, globalThis: {} };
+  const starts = [];
+  const mockFetch = async url => {
+    if (String(url).endsWith("/oauth2/token")) return response({ access_token: "test-token", expires_in: 300 });
+    starts.push(clock.now());
+    return response({ ...lineFixture, CURRENT_MO: null });
+  };
+  const client = loadTs("lib/server/mfg-client.ts", mockFetch, { "./mes-response": parser }, globals);
+  const otherRouteClient = loadTs("lib/server/mfg-client.ts", mockFetch, { "./mes-response": parser }, globals);
+  const config = { ...apiConfig, request: { ...apiConfig.request, maxRequestsPerMinute: 2 } };
+  await client.fetchLineInformation(config, "DET_HP", "SNT23");
+  await client.fetchLineInformation(config, "DET_HP", "SNT24");
+  await otherRouteClient.fetchLineInformation(config, "DET_HP", "SNT25");
+  assert.deepEqual(starts, [Date.parse("2026-10-21T08:00:00Z"),
+    Date.parse("2026-10-21T08:00:00Z"), Date.parse("2026-10-21T08:01:00Z")]);
 });
 
 test("selected factory calls API 1 and current-order API 2 only for enabled active lines", async () => {
@@ -276,6 +327,41 @@ test("concurrentRequests limits simultaneous line and order API calls", async ()
   assert.equal(orderCalls, 4);
 });
 
+test("seven-line refresh is shared across viewers and paced to the minute budget", async () => {
+  const clock = fakeClock(Date.parse("2026-10-21T08:00:00Z"));
+  const monitored = factory("BP9P1", Array.from({ length: 7 }, (_, index) => [`SNT2${index}`]));
+  let lineCalls = 0;
+  let orderCalls = 0;
+  const route = loadTs("app/api/production-lines/route.ts", fetch, {
+    "next/server": { NextResponse: { json: body => ({ body, status: 200 }) } },
+    "../../../lib/server/progress-stream": stream,
+    "../../../lib/server/mfg-config": {
+      readDashboardConfig: async () => ({ factories: [monitored],
+        autoRefresh: { enabled: true, intervalSeconds: 30, retryOnError: false } }),
+      readManufacturingConfig: async () => apiConfig,
+    },
+    "../../../lib/server/mfg-client": {
+      fetchLineInformation: async () => { lineCalls++; return parser.parseLineInformation(lineFixture); },
+      fetchWorkOrderDetail: async () => { orderCalls++; return parser.parseWorkOrderResponse(orderFixture); },
+    },
+  }, clock);
+  const request = force => ({ nextUrl: new URL(`http://localhost/api/production-lines?factory=BP9P1${force ? "&force=1" : ""}`) });
+  const [first, second] = await Promise.all([route.GET(request(false)), route.GET(request(false))]);
+  assert.equal(first.body.lines.length, 7);
+  assert.equal(second.body.lines.length, 7);
+  assert.equal(lineCalls, 7);
+  assert.equal(orderCalls, 7);
+  clock.advance(30_000);
+  await route.GET(request(false));
+  assert.equal(lineCalls, 7, "a 30-second browser poll uses the shared snapshot");
+  clock.advance(31_000);
+  await route.GET(request(false));
+  assert.equal(lineCalls, 14, "the snapshot refreshes after the effective 60-second interval");
+  assert.equal(orderCalls, 14);
+  await route.GET(request(true));
+  assert.equal(lineCalls, 21, "an explicit manual refresh bypasses the snapshot");
+});
+
 test("streamed progress reaches the browser even when a JSON line is split across chunks", async () => {
   const events = [
     { type: "progress", stage: "line", attempt: 1, maxAttempts: 3, factory: "BP9P1", line: "SNT23" },
@@ -348,11 +434,13 @@ test("server settings are read again after saving without a process restart", as
     const config = loadTs("lib/server/mfg-config.ts");
     assert.equal((await config.readManufacturingConfig()).request.concurrentRequests, 4);
     assert.equal((await config.readDashboardConfig()).autoRefresh.retryOnError, false);
-    await config.writeApiRequest({ ...apiConfig.request, concurrentRequests: 2, timeoutMs: 4000 });
+    await config.writeApiRequest({ ...apiConfig.request, concurrentRequests: 2,
+      maxRequestsPerMinute: 12, timeoutMs: 4000 });
     await config.writeDashboardConfig({ ...dashboard, timeZone: "Asia/Taipei",
       autoRefresh: { ...dashboard.autoRefresh, retryOnError: true },
       factories: [factory("BP9P1", [["SNT23"], ["SNT24", false]])] });
     assert.equal((await config.readManufacturingConfig()).request.concurrentRequests, 2);
+    assert.equal((await config.readManufacturingConfig()).request.maxRequestsPerMinute, 12);
     assert.equal((await config.readManufacturingConfig()).request.timeoutMs, 4000);
     assert.deepEqual((await config.readDashboardConfig()).factories[0].lines,
       [{ name: "SNT23", enabled: true }, { name: "SNT24", enabled: false }]);
