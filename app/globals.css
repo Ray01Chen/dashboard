@@ -162,3 +162,5 @@
 @media (max-width: 360px) {
   .order-details .field-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+.settings-view > .back-row { margin: 0 0 16px; }

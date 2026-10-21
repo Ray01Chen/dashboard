@@ -445,6 +445,7 @@ export default function Dashboard({ initialSettings }: { initialSettings: Settin
       </div>
     </header>
     {view === "settings" ? <div className="settings-view">
+      <div className="back-row"><button type="button" onClick={() => setView("overview")}>← {t.back}</button></div>
       <div className="page-title"><h2>{t.settingsTitle}</h2><p>{t.settingsHint}</p></div>
       <section className="panel settings-panel">
       <div className="settings-subhead first"><h2>{t.displaySettings}</h2></div>
