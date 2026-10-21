@@ -1,13 +1,13 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "MES 工單生產監控 | Manufacturing Dashboard",
-  description: "MES manufacturing work order dashboard with live API integration",
+  title: "PRODUCTION Overview | 生產及時看板",
+  description: "Factory line status and manufacturing work order details",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh-Hant">
+    <html lang="en">
       <body>{children}</body>
     </html>
   );

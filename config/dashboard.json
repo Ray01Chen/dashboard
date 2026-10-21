@@ -1,9 +1,45 @@
 {
-  "dataSource": "sample",
-  "initialMo": "3572611722",
-  "sampleDataFile": "data/work-orders.sample.json",
+  "factories": [
+    {
+      "name": "BP9P1",
+      "mesFactory": "DET_HP",
+      "enabled": true,
+      "lines": [
+        {
+          "name": "CD3-01",
+          "enabled": true
+        },
+        {
+          "name": "CD3-02",
+          "enabled": true
+        },
+        {
+          "name": "CD3-03",
+          "enabled": true
+        },
+        {
+          "name": "CD3-04",
+          "enabled": true
+        },
+        {
+          "name": "CD3-05",
+          "enabled": true
+        },
+        {
+          "name": "CD3-06",
+          "enabled": true
+        },
+        {
+          "name": "CD3-07",
+          "enabled": true
+        }
+      ]
+    }
+  ],
+  "timeZone": "Asia/Bangkok",
   "autoRefresh": {
     "enabled": true,
-    "intervalSeconds": 30
+    "intervalSeconds": 30,
+    "retryOnError": false
   }
 }

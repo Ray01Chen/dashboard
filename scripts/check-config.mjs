@@ -1,37 +1,45 @@
-/** Offline checks; never print Client ID or Client Secret. */
-import fs from 'node:fs';
-import path from 'node:path';
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 
-function fail(message) { throw new Error(message); }
-function parseJson(file) { return JSON.parse(fs.readFileSync(file, 'utf8')); }
-function inRange(v, min, max) { return Number.isInteger(v) && v >= min && v <= max; }
+const root = process.cwd();
+const configDir = process.env.MES_CONFIG_DIR || path.join(root, "config");
+const json = file => JSON.parse(fs.readFileSync(file, "utf8"));
+const settings = json(path.join(configDir, "dashboard.json"));
+const api = json(path.join(configDir, "mfg-api.json"));
+const validZone = zone => { try { new Intl.DateTimeFormat("en", { timeZone: zone }); return true; } catch { return false; } };
 
-const dir = process.env.MES_CONFIG_DIR || path.join(process.cwd(), 'config');
-const live = parseJson(path.join(dir, 'mfg-api.json'));
-const example = parseJson(path.join(dir, 'mfg-api.example.json'));
-const dashboard = parseJson(path.join(dir, 'dashboard.json'));
-for (const [name, c] of [['mfg-api.json', live], ['mfg-api.example.json', example]]) {
-  if (!c.oauth || !c.apis?.workOrderDetail || !c.apis?.workOrderList || !c.request) fail(`${name}: 缺少 OAuth、API 或 request 設定`);
-  if (typeof c.oauth.url !== 'string' || typeof c.oauth.clientId !== 'string' || typeof c.oauth.clientSecret !== 'string') fail(`${name}: OAuth 格式錯誤`);
-  if (typeof c.apis.workOrderList.url !== 'string' || typeof c.apis.workOrderDetail.url !== 'string') fail(`${name}: API 網址欄位必須統一使用 url`);
-  if (!c.apis.workOrderDetail.url.includes('{mo}')) fail(`${name}: detail URL 缺少 {mo}`);
-  if (!c.oauth.url.startsWith('https://') || !c.apis.workOrderDetail.url.startsWith('https://') ||
-      (c.apis.workOrderList.url && !c.apis.workOrderList.url.startsWith('https://'))) fail(`${name}: 必須使用 HTTPS`);
-  if (!inRange(c.request.timeoutMs, 1000, 120000) ||
-      !inRange(c.request.tokenExpirySafetySeconds, 0, 600) ||
-      !inRange(c.request.fallbackTokenExpiresSeconds, 60, 86400) ||
-      !inRange(c.request.maxWorkOrdersPerSearch, 1, 500) ||
-      !inRange(c.request.concurrentDetailRequests, 1, 20)) fail(`${name}: request 設定超出範圍`);
-  if ('defaultMo' in c || 'allowOtherMo' in c || 'useMockData' in c) fail(`${name}: 不應限制查詢工單`);
-}
-if (!['sample', 'live'].includes(dashboard.dataSource) || !/^\d{6,20}$/.test(dashboard.initialMo)) fail('dashboard.json: 模式或 initialMo 錯誤');
-if (!dashboard.autoRefresh || typeof dashboard.autoRefresh.enabled !== 'boolean' ||
-    !inRange(dashboard.autoRefresh.intervalSeconds, 5, 3600)) fail('dashboard.json: autoRefresh 錯誤');
-if (!dashboard.sampleDataFile || path.isAbsolute(dashboard.sampleDataFile)) fail('dashboard.json: sampleDataFile 必須是相對路徑');
-const sampleFile = path.resolve(process.cwd(), dashboard.sampleDataFile);
-const relative = path.relative(process.cwd(), sampleFile);
-if (relative.startsWith('..') || path.isAbsolute(relative) || !relative.endsWith('.json')) fail('dashboard.json: sampleDataFile 不可指向專案外');
-const sample = parseJson(sampleFile);
-if (sample.RESULT !== 'OK' || !Array.isArray(sample.MESSAGE) || !sample.MESSAGE.every(row => row && typeof row.MO_NUMBER === 'string')) fail('sample JSON: 資料格式錯誤');
-if (!sample.MESSAGE.some(row => row.M_WONO === dashboard.initialMo || row.MO_NUMBER === dashboard.initialMo)) console.warn('提醒：初始工單不在 sample JSON 中；sample 模式會顯示找不到工單。');
-console.log(`PASS: JSON 設定及 ${sample.MESSAGE.length} 筆範例工單；API URL 統一為 url；檔案路徑與可調整參數符合規範。`);
+assert.ok(validZone(settings.timeZone), "Invalid display time zone");
+assert.ok(Array.isArray(settings.factories) && settings.factories.length <= 20, "Invalid factories");
+assert.ok(settings.factories.every(factory => typeof factory.name === "string" && factory.name.length > 0 &&
+  typeof factory.mesFactory === "string" && factory.mesFactory.length > 0 &&
+  (factory.enabled === undefined || typeof factory.enabled === "boolean") && Array.isArray(factory.lines) &&
+  factory.lines.every(line => typeof line === "string" ? line.length > 0 :
+    line && typeof line.name === "string" && line.name.length > 0 && typeof line.enabled === "boolean")),
+"Invalid factory or line");
+assert.ok(typeof settings.autoRefresh.enabled === "boolean" &&
+  Number.isInteger(settings.autoRefresh.intervalSeconds) &&
+  settings.autoRefresh.intervalSeconds >= 5 && settings.autoRefresh.intervalSeconds <= 3600,
+  "Invalid refresh interval");
+assert.ok(api.oauth.url === "https://mfg-apim-th.deltaww.com/oauth2/token", "Unexpected OAuth URL");
+assert.ok(typeof api.oauth.clientId === "string" && api.oauth.clientId &&
+  typeof api.oauth.clientSecret === "string" && api.oauth.clientSecret, "Missing OAuth credentials");
+assert.ok(api.apis.lineInformation.url.includes("/{mesFactory}/line/information/{line}"), "Line URL needs MES factory and line");
+assert.ok(api.apis.workOrderDetail.url.includes("/{mesFactory}/MO/information/{mo}"), "Work order URL needs MES factory and order");
+for (const [key, min, max] of [
+  ["timeoutMs", 1000, 120000], ["tokenExpirySafetySeconds", 0, 600],
+  ["fallbackTokenExpiresSeconds", 60, 86400], ["concurrentRequests", 1, 20],
+]) assert.ok(Number.isInteger(api.request[key]) && api.request[key] >= min && api.request[key] <= max, `Invalid ${key}`);
+
+// Fixtures verify the two response shapes; runtime requests only use the MES APIs.
+const line = json(path.join(root, "data/production-lines.sample.json"));
+const orders = json(path.join(root, "data/work-orders.sample.json"));
+assert.ok(typeof line.CURRENT_MO === "string" && typeof line.CURRENT_MODEL === "string", "Line fixture needs current order and model");
+assert.ok(Array.isArray(line.UTILIZATION_MACHINE) && Array.isArray(line.STD_ARCHIVE_DATA) &&
+  Array.isArray(line.STD_ARCHIVE_WIP), "Line fixture metrics are incomplete");
+assert.equal(orders.RESULT, "OK");
+assert.ok(Array.isArray(orders.MESSAGE) && orders.MESSAGE.some(order => order.MO_NUMBER === line.CURRENT_MO),
+  "Order fixture must include current main order");
+assert.ok(orders.MESSAGE.some(order => order.PARENT_MO === line.CURRENT_MO && order.MO_NUMBER !== line.CURRENT_MO),
+  "Order fixture must include child orders");
+console.log(`PASS: ${settings.factories.reduce((count, factory) => count + factory.lines.length, 0)} configured line(s), two live API templates, response contracts`);

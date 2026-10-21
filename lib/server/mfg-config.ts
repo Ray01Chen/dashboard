@@ -1,124 +1,143 @@
-/** Server-only runtime settings. The configuration bootstrap directory is
- *  <project>/config or MES_CONFIG_DIR (optional deployment override).
- *  Do not import this module into Client Components.
- */
 import "server-only";
-import { readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { ApiRequestSettings, DashboardSettings } from "../api";
 
 export type ManufacturingConfig = {
   oauth: { url: string; clientId: string; clientSecret: string };
-  apis: { workOrderList: { url: string }; workOrderDetail: { url: string } };
-  request: {
-    timeoutMs: number;
-    tokenExpirySafetySeconds: number;
-    fallbackTokenExpiresSeconds: number;
-    maxWorkOrdersPerSearch: number;
-    concurrentDetailRequests: number;
-  };
+  apis: { lineInformation: { url: string }; workOrderDetail: { url: string } };
+  request: ApiRequestSettings;
 };
 
-export type DashboardConfig = {
-  dataSource: "sample" | "live";
-  initialMo: string;
-  sampleDataFile: string;
-  autoRefresh: { enabled: boolean; intervalSeconds: number };
-};
+const configDirectory = () => path.resolve(process.env.MES_CONFIG_DIR || path.join(process.cwd(), "config"));
+const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
+const integer = (value: unknown, min: number, max: number): value is number =>
+  typeof value === "number" && Number.isInteger(value) && value >= min && value <= max;
 
-function configDirectory(): string {
-  return path.resolve(process.env.MES_CONFIG_DIR || path.join(process.cwd(), "config"));
+async function readJson(file: string): Promise<Record<string, unknown>> {
+  let value: unknown;
+  try { value = JSON.parse(await readFile(path.join(configDirectory(), file), "utf8")); }
+  catch { throw new Error(`Cannot read valid config/${file}.`); }
+  if (!record(value)) throw new Error(`config/${file} must contain a JSON object.`);
+  return value;
 }
 
-function plainObject(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
+function textId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{1,40}$/.test(value);
 }
 
-async function loadJson(filename: string): Promise<Record<string, unknown>> {
-  let raw: string;
-  try {
-    raw = await readFile(path.join(configDirectory(), filename), "utf8");
-  } catch {
-    throw new Error(`找不到設定檔 ${filename}（預設位於 config/）。`);
+function timeZone(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 80) return false;
+  try { new Intl.DateTimeFormat("en", { timeZone: value }); return true; }
+  catch { return false; }
+}
+
+export function validateSettings(value: unknown): DashboardSettings {
+  if (!record(value) || !timeZone(value.timeZone) || !record(value.autoRefresh) ||
+    typeof value.autoRefresh.enabled !== "boolean" || !integer(value.autoRefresh.intervalSeconds, 5, 3600) ||
+    (value.autoRefresh.retryOnError !== undefined && typeof value.autoRefresh.retryOnError !== "boolean") ||
+    !Array.isArray(value.factories) || value.factories.length > 20) {
+    throw new Error("Invalid dashboard settings.");
   }
-  let parsed: unknown;
-  try { parsed = JSON.parse(raw); }
-  catch { throw new Error(`設定檔 ${filename} 不是有效 JSON。`); }
-  if (!plainObject(parsed)) throw new Error(`設定檔 ${filename} 必須是 JSON 物件。`);
-  return parsed;
+  const factories = value.factories.map(item => {
+    if (!record(item) || !textId(item.name) || !textId(item.mesFactory) ||
+      (item.enabled !== undefined && typeof item.enabled !== "boolean") ||
+      !Array.isArray(item.lines) || item.lines.length > 100) {
+      throw new Error("Each factory needs a name, MES factory, and valid lines.");
+    }
+    // Accept older string-only line settings and normalize them when saved.
+    const lines = item.lines.map(line => typeof line === "string"
+      ? { name: line, enabled: true } : line);
+    if (!lines.every(line => record(line) && textId(line.name) && typeof line.enabled === "boolean")) {
+      throw new Error("Each line needs a valid name and enabled setting.");
+    }
+    return { name: item.name, mesFactory: item.mesFactory, enabled: item.enabled ?? true,
+      lines: lines as { name: string; enabled: boolean }[] };
+  });
+  const names = factories.map(item => item.name);
+  if (new Set(names).size !== names.length ||
+    factories.some(item => new Set(item.lines.map(line => line.name)).size !== item.lines.length)) {
+    throw new Error("Factory and line names must be unique.");
+  }
+  return {
+    factories,
+    timeZone: value.timeZone,
+    // Existing dashboard.json files predate retryOnError; false keeps their pause-on-error behavior.
+    autoRefresh: { enabled: value.autoRefresh.enabled, intervalSeconds: value.autoRefresh.intervalSeconds,
+      retryOnError: value.autoRefresh.retryOnError ?? false },
+  };
 }
 
-function validHttpsUrl(url: string, allowPlaceholder: boolean): boolean {
-  if (!url.startsWith("https://")) return false;
+export async function readDashboardConfig(): Promise<DashboardSettings> {
+  return validateSettings(await readJson("dashboard.json"));
+}
+
+export async function writeDashboardConfig(value: unknown): Promise<DashboardSettings> {
+  const settings = validateSettings(value);
+  const target = path.join(configDirectory(), "dashboard.json");
+  const temporary = path.join(configDirectory(), `.dashboard-${randomUUID()}.tmp`);
+  await writeFile(temporary, JSON.stringify(settings, null, 2) + "\n", { encoding: "utf8", flag: "wx" });
+  await rename(temporary, target);
+  return settings;
+}
+
+export function validateApiRequest(value: unknown): ApiRequestSettings {
+  if (!record(value) || !integer(value.timeoutMs, 1000, 120000) ||
+    !integer(value.tokenExpirySafetySeconds, 0, 600) ||
+    !integer(value.fallbackTokenExpiresSeconds, 60, 86400) ||
+    !integer(value.concurrentRequests, 1, 20)) {
+    throw new Error("Invalid MES request settings.");
+  }
+  return {
+    timeoutMs: value.timeoutMs, tokenExpirySafetySeconds: value.tokenExpirySafetySeconds,
+    fallbackTokenExpiresSeconds: value.fallbackTokenExpiresSeconds, concurrentRequests: value.concurrentRequests,
+  };
+}
+
+export async function writeApiRequest(value: unknown): Promise<ApiRequestSettings> {
+  const request = validateApiRequest(value);
+  const obj = await readJson("mfg-api.json");
+  const target = path.join(configDirectory(), "mfg-api.json");
+  const temporary = path.join(configDirectory(), `.mfg-api-${randomUUID()}.tmp`);
+  obj.request = request;
+  await writeFile(temporary, JSON.stringify(obj, null, 2) + "\n", { encoding: "utf8", flag: "wx", mode: 0o600 });
+  await rename(temporary, target);
+  return request;
+}
+
+function httpsTemplate(value: unknown, placeholders: string[]): value is string {
+  if (typeof value !== "string" || !placeholders.every(name => value.includes(`{${name}}`))) return false;
   try {
-    const value = new URL(allowPlaceholder ? url.replaceAll("{mo}", "123456") : url);
-    return value.protocol === "https:" && !!value.hostname && !value.username && !value.password;
+    const parsed = new URL(value.replace(/\{[a-zA-Z]+\}/g, "test"));
+    return parsed.protocol === "https:" && !!parsed.hostname && !parsed.username && !parsed.password &&
+      !value.slice(8).includes("https://");
   } catch { return false; }
 }
 
-function integerInRange(value: unknown, min: number, max: number): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= min && value <= max;
-}
-
-/** API endpoints + OAuth credentials + upstream request tuning; no fixed MO restrictions. */
 export async function readManufacturingConfig(): Promise<ManufacturingConfig> {
-  const obj = await loadJson("mfg-api.json");
-  if (!plainObject(obj.oauth) || !plainObject(obj.apis) || !plainObject(obj.request)) {
-    throw new Error("config/mfg-api.json 缺少 oauth、apis 或 request。");
+  const obj = await readJson("mfg-api.json");
+  const oauth = obj.oauth;
+  const apis = obj.apis;
+  const request = obj.request;
+  if (!record(oauth) || !record(apis) || !record(request)) {
+    throw new Error("Invalid manufacturing API configuration.");
   }
-  const { oauth, apis, request } = obj;
-  if (!plainObject(apis.workOrderList) || !plainObject(apis.workOrderDetail)) {
-    throw new Error("config/mfg-api.json 缺少工單 API 設定。");
-  }
-  const list = apis.workOrderList;
+  const line = apis.lineInformation;
   const detail = apis.workOrderDetail;
-  if (typeof oauth.url !== "string" || typeof oauth.clientId !== "string" ||
-      typeof oauth.clientSecret !== "string" || typeof list.url !== "string" || typeof detail.url !== "string") {
-    throw new Error("config/mfg-api.json OAuth 與 API 的 url 欄位必須是字串。");
-  }
-  if (!validHttpsUrl(oauth.url, false) || !validHttpsUrl(detail.url, true) ||
-      (list.url !== "" && !validHttpsUrl(list.url, false))) {
-    throw new Error("config/mfg-api.json 的 URL 必須是有效 HTTPS 網址。");
-  }
-  if (!detail.url.includes("{mo}")) {
-    throw new Error("apis.workOrderDetail.url 必須包含 {mo} 工單參數。");
-  }
-  if (!integerInRange(request.timeoutMs, 1000, 120000) ||
-      !integerInRange(request.tokenExpirySafetySeconds, 0, 600) ||
-      !integerInRange(request.fallbackTokenExpiresSeconds, 60, 86400) ||
-      !integerInRange(request.maxWorkOrdersPerSearch, 1, 500) ||
-      !integerInRange(request.concurrentDetailRequests, 1, 20)) {
-    throw new Error("config/mfg-api.json 的 request 數值超出允許範圍。");
+  const oauthUrl = oauth.url;
+  const lineUrl = record(line) ? line.url : undefined;
+  const detailUrl = record(detail) ? detail.url : undefined;
+  const clientId = oauth.clientId;
+  const clientSecret = oauth.clientSecret;
+  if (!httpsTemplate(oauthUrl, []) || !httpsTemplate(lineUrl, ["mesFactory", "line"]) ||
+    !httpsTemplate(detailUrl, ["mesFactory", "mo"]) || typeof clientId !== "string" || !clientId ||
+    typeof clientSecret !== "string" || !clientSecret) {
+    throw new Error("Invalid manufacturing API endpoint or request settings.");
   }
   return {
-    oauth: { url: oauth.url, clientId: oauth.clientId, clientSecret: oauth.clientSecret },
-    apis: { workOrderList: { url: list.url }, workOrderDetail: { url: detail.url } },
-    request: {
-      timeoutMs: request.timeoutMs,
-      tokenExpirySafetySeconds: request.tokenExpirySafetySeconds,
-      fallbackTokenExpiresSeconds: request.fallbackTokenExpiresSeconds,
-      maxWorkOrdersPerSearch: request.maxWorkOrdersPerSearch,
-      concurrentDetailRequests: request.concurrentDetailRequests,
-    },
-  };
-}
-
-/** Display options and offline sample file location; never includes OAuth secrets. */
-export async function readDashboardConfig(): Promise<DashboardConfig> {
-  const obj = await loadJson("dashboard.json");
-  if ((obj.dataSource !== "sample" && obj.dataSource !== "live") ||
-      typeof obj.initialMo !== "string" || !/^\d{6,20}$/.test(obj.initialMo) ||
-      typeof obj.sampleDataFile !== "string" || !obj.sampleDataFile.trim() ||
-      !plainObject(obj.autoRefresh) || typeof obj.autoRefresh.enabled !== "boolean" ||
-      !integerInRange(obj.autoRefresh.intervalSeconds, 5, 3600)) {
-    throw new Error("config/dashboard.json 的 dataSource、initialMo、sampleDataFile 或 autoRefresh 設定錯誤。");
-  }
-  return {
-    dataSource: obj.dataSource,
-    initialMo: obj.initialMo,
-    sampleDataFile: obj.sampleDataFile,
-    autoRefresh: {
-      enabled: obj.autoRefresh.enabled,
-      intervalSeconds: obj.autoRefresh.intervalSeconds,
-    },
+    oauth: { url: oauthUrl, clientId, clientSecret },
+    apis: { lineInformation: { url: lineUrl }, workOrderDetail: { url: detailUrl } },
+    request: validateApiRequest(request),
   };
 }

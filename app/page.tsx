@@ -1,10 +1,16 @@
 import Dashboard from "../components/Dashboard";
-import { readDashboardConfig } from "../lib/server/mfg-config";
+import { readDashboardConfig, readManufacturingConfig } from "../lib/server/mfg-config";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  // initialMo only populates the search box; live queries are not restricted.
-  const config = await readDashboardConfig();
-  return <Dashboard defaultMo={config.initialMo} autoRefreshEnabled={config.autoRefresh.enabled} refreshIntervalSeconds={config.autoRefresh.intervalSeconds} />;
+  try {
+    const [dashboard, manufacturing] = await Promise.all([readDashboardConfig(), readManufacturingConfig()]);
+    return <Dashboard initialSettings={{ ...dashboard, apiRequest: manufacturing.request }} />;
+  } catch (error) {
+    return <main className="dashboard"><div className="panel empty" role="alert">
+      <h1>Dashboard configuration unavailable</h1>
+      <p>{error instanceof Error ? error.message : "Could not load server configuration."}</p>
+    </div></main>;
+  }
 }

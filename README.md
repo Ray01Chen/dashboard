@@ -1,11 +1,10 @@
-<<<<<<< HEAD
-# MES 工單生產監控 Dashboard (V3)
+# Production Pulse
 
-Next.js 15 + React 19 + TypeScript，**不需要 Python**。Dashboard 顯示主工單與子工單、24 個 MES 欄位、生產數量、CSV 匯出。
+MES dashboard for selected factories and production lines. Select an enabled factory in the header to load its enabled lines from the line information API and each line's current work orders from the work order API. The overview shows output, target, input, WIP, remaining quantity, and progress for each line. Opening a line shows the related main and sub work orders and detailed line metrics from the same update.
 
-## 安裝與啟動
+## Run
 
-需求：Node.js 20+。
+Requires Node.js 20 or later. Keep `config/mfg-api.json` on the server; it is ignored by Git because it contains OAuth credentials.
 
 ```bash
 npm install
@@ -13,131 +12,57 @@ npm run check:config
 npm run dev
 ```
 
-開啟 http://localhost:3000。目前預設 **sample 模式**，本機 JSON 中有使用者提供的 5 筆工單資料。畫面會顯示 `SAMPLE DATA`，不會假裝是實際 MES 數據。
+Open http://localhost:3000. Runtime requests never read sample or example files. The files in `data/` are fixtures for contract tests only.
+Development output is written to `.next-dev`, while `npm run build` writes to `.next`. A build can run while the development server is open without replacing its page files.
 
-## 專案結構
+## Live API configuration
 
-```text
-production-efficiency-frontend/
-├── app/
-│   ├── api/
-│   │   └── work-orders/
-│   │       ├── route.ts             # GET /api/work-orders?mo=xxx
-│   │       └── search/route.ts      # 多工單搜尋入口；第二支 API 待提供，回 501
-│   ├── page.tsx                     # 讀取 Dashboard 設定，傳遞給 React
-│   ├── layout.tsx
-│   └── globals.css
-├── components/
-│   └── Dashboard.tsx                # UI、KPI、資料表與本次工單內篩選
-├── config/
-│   ├── mfg-api.json                 # OAuth、雙 API URL、連線參數（有機密）
-│   ├── mfg-api.example.json         # 不含 Secret 的範本
-│   └── dashboard.json               # 模式、初始工單、範例讀取路徑、自動刷新
-├── data/
-│   └── work-orders.sample.json      # 範例 MES JSON（不是設定）
-├── lib/
-│   ├── api.ts                       # 回傳型別、欄位定義與前端查詢
-│   └── server/
-│       ├── mfg-config.ts            # 伺服器端讀 config/*.json
-│       ├── mfg-client.ts            # OAuth、MES 查詢、併行查詢
-│       └── sample-data.ts           # 按 dashboard.json 的路徑讀取範例 JSON
-├── scripts/check-config.mjs        # 本地 JSON / 路徑檢查
-├── package.json                    # Node/npm 的標準根目錄檔案
-└── tsconfig.json                   # TypeScript 的標準根目錄檔案
-```
-
-## 外部設定：`config/mfg-api.json`
+`config/mfg-api.json` is the only source for OAuth credentials, both endpoint templates, and MES request settings. Its structure is:
 
 ```json
 {
   "oauth": {
     "url": "https://mfg-apim-th.deltaww.com/oauth2/token",
-    "clientId": "",
-    "clientSecret": ""
+    "clientId": "<server-side client ID>",
+    "clientSecret": "<server-side client secret>"
   },
   "apis": {
-    "workOrderList": { "url": "" },
-    "workOrderDetail": { "url": "https://mfg-apim-gateway-th.deltaww.com/DETMFGAPI/BP3_AE/v1/api/DET_HP/MO/information/{mo}" }
+    "lineInformation": {
+      "url": "https://mfg-apim-gateway-th.deltaww.com/DETMFGAPI/BP3_AE/v1/api/{mesFactory}/line/information/{line}"
+    },
+    "workOrderDetail": {
+      "url": "https://mfg-apim-gateway-th.deltaww.com/DETMFGAPI/BP3_AE/v1/api/{mesFactory}/MO/information/{mo}"
+    }
   },
   "request": {
     "timeoutMs": 20000,
     "tokenExpirySafetySeconds": 60,
     "fallbackTokenExpiresSeconds": 300,
-    "maxWorkOrdersPerSearch": 100,
-    "concurrentDetailRequests": 4
+    "concurrentRequests": 4
   }
 }
 ```
 
-所有遠端 API 網址都統一使用 **`url`**；`{mo}` 由後端呼叫時替換，不是固定工單。`workOrderList.url` 尚未取得規格，故先留空。
+For each enabled line in the selected factory, the server substitutes that factory's MES code and the line name in API 1. If API 1 returns a current `CURRENT_MO`, the overview substitutes it into API 2, displays the main order quantities, and retains the related orders for the line detail view. Opening the line uses that response without repeating the same request; a failed detail lookup can be retried from the line view. The request settings can be edited in the Settings screen; credentials and URLs are never returned to the browser. `MES_CONFIG_DIR` can point to a separate server configuration directory.
 
-`request` 可調整 API Timeout、OAuth Token 提前刷新緩衝、Token 有效期缺失時的預設值、未來批次最多查幾張工單，以及同時查詢數量。這些設定具有驗證及安全上限。
+API 1 and API 2 retry connection errors and HTTP 404, 429, or 5xx responses up to two more times. OAuth retries connection errors, 429 and 5xx. A 401 response invalidates the cached token and retries once. A failed line or order lookup shows its own error; other lines remain visible. After an intermittent failure, the last successful line and main order values remain visible for up to five minutes with a stale label when the current order is unchanged. A failed full detail request shows an error in the line view, with the last successful detail shown for up to five minutes when the current order is unchanged.
+The browser shows the actual OAuth, line API, and work order API attempt number while waiting. `concurrentRequests` caps simultaneous line workers; each worker calls API 1 then, when there is a current order, API 2. Scheduled refresh uses the configured interval without starting a second request while one is in flight. With **Keep retrying after API errors** off, an exhausted request pauses that factory until someone presses Refresh and every selected line succeeds; the pause survives browser reloads. With it on, the same factory is retried at every interval despite failures, and a later fully successful response clears the failure flag. Other factories keep their own failure state. The compact overview keeps production quantities visible and shows utilization, yield, throughput, and last process on hover or keyboard focus; the same information is available in line details on touch screens.
+In a line view, the selected work order's full fields are the main panel. A compact, independently scrolling list of main and sub orders sits beside it on desktop and moves above it on narrow screens so an operator can change orders without scrolling through every field. The list shows model and output progress; the selected panel contains all returned work order fields. Rows with the same MO number remain distinct by model and output group.
 
-## 外部設定：`config/dashboard.json`
+## Settings and time zones
 
-```json
-{
-  "dataSource": "sample",
-  "initialMo": "3572611722",
-  "sampleDataFile": "data/work-orders.sample.json",
-  "autoRefresh": {
-    "enabled": true,
-    "intervalSeconds": 30
-  }
-}
+`config/dashboard.json` stores the factory name, one MES factory code per factory, and its line names. Factories and individual lines can be enabled or disabled. The selected factory and these switches directly control which API 1 and API 2 URLs are called; disabled lines cannot be opened through API 2. The dashboard initially selects the first enabled factory. Settings also stores whether scheduled refresh is enabled, its interval, the continuous retry switch, and an IANA display time zone; the default is `Asia/Bangkok`. Older settings files without the retry switch retain pause-on-error behavior.
+Saving Settings takes effect immediately: the server reads the updated files on the next request, and auto refresh uses the new interval and retry mode. A factory already paused in pause-on-error mode still waits for a successful manual Refresh. No service restart or manual browser reload is needed.
+
+The API's date and time values without an explicit offset are interpreted as factory time (UTC+7), then displayed in the chosen time zone. Date-only work order fields remain calendar dates. The clock, last updated timestamps, cached detail timestamp, work order date and time fields, other reported timestamp fields, hourly time slots, and exported CSV date/time fields use the selected display time zone. Raw API values stay intact; the display and export convert them. English and day theme are the initial browser defaults; the theme button names the current theme (Day in light mode, Night in dark mode). English, Traditional Chinese, and Thai are available.
+
+## Checks
+
+```bash
+npm run check:config
+npm test
+npx tsc --noEmit
+npm run build
 ```
 
-- `dataSource`: `sample` / `live`。正式連接 MES 時，填妥 OAuth 資訊後改成 `live`。
-- `initialMo`: **只是畫面輸入框的初始工單**，不限制正式模式查詢其他工單。
-- `sampleDataFile`: **從專案根目錄算起的相對路徑**，可以換到其他專案內 `.json` 檔案。不是公司 API URL，也不是供瀏覽器讀取的 `public/` 資料。
-- `autoRefresh.enabled`: 預設是否勾選自動更新。
-- `autoRefresh.intervalSeconds`: 自動更新間隔（5–3600 秒）。
-
-## 哪些路徑能改，哪些不能任意改？
-
-1. **遠端 OAuth / MES API URL**：設定於 `config/mfg-api.json`。
-2. **本地 sample JSON 的讀取路徑**：設定於 `config/dashboard.json` 的 `sampleDataFile`。
-3. **設定資料夾的起始路徑**：預設為專案根目錄的 `config/`。必要時，可透過部署環境變數 `MES_CONFIG_DIR` 指定另一個完整資料夾路徑（此為「先找到設定檔」的啟動參數，不能放到尚未讀取的 JSON 裡）。
-4. **Next.js 路由 / 檔案 import 路徑**：由框架與 TypeScript 的程式結構決定。改寫成 JSON 卻沒有同步建立新 route，會使系統失效，因此不設計成使用者可任意變更的參數。
-5. `package.json`、`tsconfig.json`：Node.js / TypeScript 的根目錄標準設定，保留原位。
-
-## API 資料流
-
-```text
-瀏覽器 Dashboard
-    → GET /api/work-orders?mo=3572611722
-    → Next.js 伺服器端 API Route
-      → config/dashboard.json: sample / live
-      → sample: 讀取 sampleDataFile 指定的 JSON
-      → live: 從 config/mfg-api.json 取得 OAuth Token + API URL
-              → GET /MO/information/{mo}
-    → Dashboard 呈現主工單、子工單、24 個欄位
-```
-
-未來工單清單 API：
-
-```text
-工廠 + 線體 + 時間
-    → /api/work-orders/search
-    → workOrderList.url（目前規格尚未提供，回 501）
-    → 工單號陣列
-    → 針對每張工單呼叫 workOrderDetail.url
-    → 多工單 Dashboard（後續開發）
-```
-
-**目前工廠／線體／日期只是所查工單回傳結果的前端篩選，不是跨工單搜尋。** API 清單的 method、傳參方式、回傳格式未提供前，不猜測實作。
-
-## 安全提醒
-
-- `mfg-api.json` 含機密，已加入 `.gitignore`。請在部署環境安全存放；實際 Client Secret 不得放 `public/`、`NEXT_PUBLIC_*` 或公開 Git。
-- `mfg-api.example.json` 不含機密，適合版控。要注意：含有真實 Secret 的 ZIP 也不能公開傳送。
-- OAuth Token 和 Client Secret 只在 Node.js 伺服器端使用。正式內部部署應額外保護 API Route 的使用者授權與流量。
-- `sampleDataFile` 限制在專案內，避免讀取任意伺服器檔案。
-- 若舊憑證曾被分享或放在 Git，應進行輪替。
-
-## 驗證
-
-`npm run check:config` 可離線檢查設定格式、數值範圍與範例 JSON。`npm run build` 用於完整 Next.js 編譯；正式 MES 網路連線必須在公司網路／VPN 驗證。
-=======
-# dashboard
->>>>>>> daa95c1ec570938c5968740182d1c5c3b467c0f2
+The config check validates the server config and response fixtures. Tests cover time zone conversion, API retries and progress, settings reload, API response behavior, and the line request concurrency limit. Build and type checks validate server routes and the interface.

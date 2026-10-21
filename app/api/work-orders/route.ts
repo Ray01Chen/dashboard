@@ -1,37 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readSampleResponse } from "../../../lib/server/sample-data";
 import { readDashboardConfig, readManufacturingConfig } from "../../../lib/server/mfg-config";
-import { fetchWorkOrderDetail, MesApiError } from "../../../lib/server/mfg-client";
+import { fetchLineInformation, fetchWorkOrderDetail, MesApiError } from "../../../lib/server/mfg-client";
+import { progressStream } from "../../../lib/server/progress-stream";
+import type { ApiProgress, WorkOrderPayload } from "../../../lib/api";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+const headers = { "Cache-Control": "no-store" };
 
-function errorResponse(message: string, status: number) {
-  return NextResponse.json({ error: message }, { status, headers: { "Cache-Control": "no-store" } });
+async function loadOrders(request: NextRequest, report?: (event: ApiProgress) => void): Promise<WorkOrderPayload> {
+  const factoryName = request.nextUrl.searchParams.get("factory") || "";
+  const line = request.nextUrl.searchParams.get("line") || "";
+    const settings = await readDashboardConfig();
+    const factory = settings.factories.find(item => item.name === factoryName && item.enabled &&
+      item.lines.some(itemLine => itemLine.name === line && itemLine.enabled));
+    if (!factory) throw new MesApiError(400, "Factory or line is not monitored.");
+    const mfg = await readManufacturingConfig();
+    const context = { factory: factoryName, line, total: 2, completed: 0 };
+    report?.({ ...context, stage: "line", attempt: 0, maxAttempts: 3 });
+    const information = await fetchLineInformation(mfg, factory.mesFactory, line,
+      attempt => report?.({ ...context, ...attempt }));
+    const currentMo = information.CURRENT_MO?.trim();
+    if (!currentMo) return { orders: [], currentMo: "", fetchedAt: new Date().toISOString() };
+    context.completed = 1;
+    report?.({ ...context, stage: "order", attempt: 0, maxAttempts: 3 });
+    const detail = await fetchWorkOrderDetail(mfg, currentMo, factory.mesFactory,
+      attempt => report?.({ ...context, ...attempt }));
+    if (!detail.MESSAGE.some(order => order.MO_NUMBER === currentMo))
+      throw new MesApiError(502, "Work order API returned no main order for the current line.");
+    return { orders: detail.MESSAGE, currentMo, fetchedAt: new Date().toISOString() };
 }
 
 export async function GET(request: NextRequest) {
+  if (request.nextUrl.searchParams.get("stream") === "1") return progressStream(report => loadOrders(request, report));
   try {
-    const app = await readDashboardConfig();
-    const mo = request.nextUrl.searchParams.get("mo")?.trim() || app.initialMo;
-    if (!/^\d{6,20}$/.test(mo)) return errorResponse("工單號碼應為 6–20 位數字。", 400);
-
-    if (app.dataSource === "sample") {
-      const sampleResponse = await readSampleResponse(app.sampleDataFile);
-      if (!sampleResponse.MESSAGE.some(row => row.M_WONO === mo || row.MO_NUMBER === mo)) {
-        return errorResponse(`範例資料檔沒有工單 ${mo}；正式 API 可查詢其他工單。`, 404);
-      }
-      return NextResponse.json({ ...sampleResponse, source: "sample", queriedMo: mo, fetchedAt: new Date().toISOString() },
-        { headers: { "Cache-Control": "no-store" } });
-    }
-
-    const mfg = await readManufacturingConfig();
-    const result = await fetchWorkOrderDetail(mfg, mo);
-    return NextResponse.json({ ...result, source: "live", queriedMo: mo, fetchedAt: new Date().toISOString() },
-      { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(await loadOrders(request), { headers });
   } catch (error) {
-    if (error instanceof MesApiError) return errorResponse(error.message, error.status);
-    console.error("MES configuration or internal failure", error instanceof Error ? error.name : "unknown");
-    return errorResponse(error instanceof Error && error.message.startsWith("config/") ? error.message : "工單 API 發生內部錯誤。", 500);
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Work order unavailable." },
+      { status: error instanceof MesApiError ? error.status : 500, headers });
   }
 }

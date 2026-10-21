@@ -1,0 +1,502 @@
+{
+    "CURRENT_MO": "3572611722",
+    "CURRENT_MODEL": "ECD16010094",
+    "UTILIZATION_RATE_TODAY": 69.55,
+    "UTILIZATION_RATE_YESTERDAY": 66.78,
+    "UTILIZATION_MACHINE": [
+        {
+            "EQUIPMENT_CODE": "E020095205",
+            "MACHINE_NAME": "N/A",
+            "UTILIZATION": 62.01
+        },
+        {
+            "EQUIPMENT_CODE": "H522060701",
+            "MACHINE_NAME": "N/A",
+            "UTILIZATION": 67.19
+        },
+        {
+            "EQUIPMENT_CODE": "H522060716",
+            "MACHINE_NAME": "S_FUNC_TEST01(ATS2 CDBU)",
+            "UTILIZATION": 72.74
+        },
+        {
+            "EQUIPMENT_CODE": "H522060717",
+            "MACHINE_NAME": "N/A",
+            "UTILIZATION": 78.48
+        },
+        {
+            "EQUIPMENT_CODE": "H522071203",
+            "MACHINE_NAME": "N/A",
+            "UTILIZATION": 81.97
+        },
+        {
+            "EQUIPMENT_CODE": "H522071208",
+            "MACHINE_NAME": "N/A",
+            "UTILIZATION": 73.56
+        },
+        {
+            "EQUIPMENT_CODE": "H522071209",
+            "MACHINE_NAME": "N/A",
+            "UTILIZATION": 86.59
+        },
+        {
+            "EQUIPMENT_CODE": "H522071211",
+            "MACHINE_NAME": "N/A",
+            "UTILIZATION": 84.28
+        },
+        {
+            "EQUIPMENT_CODE": "H522071214",
+            "MACHINE_NAME": "S_HI_POT(AST2 CDBU)",
+            "UTILIZATION": 73.06
+        },
+        {
+            "EQUIPMENT_CODE": "H522091534",
+            "MACHINE_NAME": "N/A",
+            "UTILIZATION": 83.32
+        },
+        {
+            "EQUIPMENT_CODE": "H522100310",
+            "MACHINE_NAME": "S_ICT(ICT CDBU)",
+            "UTILIZATION": 68.72
+        },
+        {
+            "EQUIPMENT_CODE": "H522101810",
+            "MACHINE_NAME": "N/A",
+            "UTILIZATION": 37.11
+        },
+        {
+            "EQUIPMENT_CODE": "H522101811",
+            "MACHINE_NAME": "N/A",
+            "UTILIZATION": 70.87
+        },
+        {
+            "EQUIPMENT_CODE": "H522101812",
+            "MACHINE_NAME": "N/A",
+            "UTILIZATION": 80.84
+        },
+        {
+            "EQUIPMENT_CODE": "H522101813",
+            "MACHINE_NAME": "N/A",
+            "UTILIZATION": 80.36
+        },
+        {
+            "EQUIPMENT_CODE": "H522101825",
+            "MACHINE_NAME": "S_EEPROM(EER CDBU)",
+            "UTILIZATION": 89.56
+        },
+        {
+            "EQUIPMENT_CODE": "H523061502",
+            "MACHINE_NAME": "N/A",
+            "UTILIZATION": 30.51
+        },
+        {
+            "EQUIPMENT_CODE": "H523081504",
+            "MACHINE_NAME": "S_INSERTION(INSERTION)",
+            "UTILIZATION": 43.3
+        },
+        {
+            "EQUIPMENT_CODE": "H523081601",
+            "MACHINE_NAME": "N/A",
+            "UTILIZATION": 72.37
+        },
+        {
+            "EQUIPMENT_CODE": "H523081625",
+            "MACHINE_NAME": "N/A",
+            "UTILIZATION": 65.99
+        },
+        {
+            "EQUIPMENT_CODE": "H523081637",
+            "MACHINE_NAME": "N/A",
+            "UTILIZATION": 58.14
+        },
+        {
+            "EQUIPMENT_CODE": "H523081655",
+            "MACHINE_NAME": "N/A",
+            "UTILIZATION": 57.32
+        },
+        {
+            "EQUIPMENT_CODE": "H523081656",
+            "MACHINE_NAME": "N/A",
+            "UTILIZATION": 65.59
+        },
+        {
+            "EQUIPMENT_CODE": "H523081657",
+            "MACHINE_NAME": "N/A",
+            "UTILIZATION": 66.71
+        },
+        {
+            "EQUIPMENT_CODE": "H523082202",
+            "MACHINE_NAME": "N/A",
+            "UTILIZATION": 88.26
+        },
+        {
+            "EQUIPMENT_CODE": "H523082203",
+            "MACHINE_NAME": "N/A",
+            "UTILIZATION": 69.43
+        }
+    ],
+    "AVERAGE_TBS": 222.68,
+    "AVERAGE_TBS_MACHINE": [
+        {
+            "EQUIPMENT_CODE": "H522100310",
+            "MACHINE_NAME": "S_ICT(ICT CDBU)",
+            "TBS": 140.77
+        },
+        {
+            "EQUIPMENT_CODE": "H522101813",
+            "MACHINE_NAME": "N/A",
+            "TBS": 632.22
+        }
+    ],
+    "AUTOMATION_DEGREE": "8.57",
+    "DL_COUNT": 32,
+    "EQUIPMENT_COUNT": 3,
+    "CALCULATE_DAY": 10,
+    "FPYR": 98.58,
+    "UPH": "30",
+    "OI_RATE": "52",
+    "LINE_BALANCE": [
+        {
+            "MACHINE_NAME": "S_COSMETIC_CHK02(CVI CDBU)",
+            "CYCLE_TIME": 0
+        },
+        {
+            "MACHINE_NAME": "S_EEPROM(EER CDBU)",
+            "CYCLE_TIME": 10.4
+        },
+        {
+            "MACHINE_NAME": "S_FUNC_TEST01(ATS2 CDBU)",
+            "CYCLE_TIME": 195.02
+        },
+        {
+            "MACHINE_NAME": "S_HI_POT(AST2 CDBU)",
+            "CYCLE_TIME": 23
+        },
+        {
+            "MACHINE_NAME": "S_ICT(ICT CDBU)",
+            "CYCLE_TIME": 26.28
+        },
+        {
+            "MACHINE_NAME": "S_INSERTION(INSERTION)",
+            "CYCLE_TIME": 4.69
+        }
+    ],
+    "STD_ARCHIVE_PERCENTAGE_DATA": [
+        {
+            "PROCESS_NAME": "0070",
+            "STD_ACH": 95.86
+        },
+        {
+            "PROCESS_NAME": "ASSEMBLY",
+            "STD_ACH": 70.19
+        },
+        {
+            "PROCESS_NAME": "FINAL-TEST",
+            "STD_ACH": 87.74
+        }
+    ],
+    "STD_ARCHIVE_DATA": [
+        {
+            "PROCESS_NAME": "0070",
+            "QTY_TYPE": "PLAN_QTY",
+            "SAFE_RATE": 95,
+            "ALERT_RATE": 90,
+            "T0000_0030": 20,
+            "T0100_0200": 51,
+            "T0200_0300": 62,
+            "T0300_0330": 31,
+            "T0330_0400": 20,
+            "T0400_0500": 41,
+            "T0500_0600": 51,
+            "T0600_0730": 72,
+            "T0730_0800": 20,
+            "T0800_0900": 62,
+            "T0900_1000": 62,
+            "T1000_1030": 20,
+            "T1030_1100": 31,
+            "T1100_1200": 62
+        },
+        {
+            "PROCESS_NAME": "0070",
+            "QTY_TYPE": "REAL_QTY",
+            "SAFE_RATE": 95,
+            "ALERT_RATE": 90,
+            "T0000_0030": 0,
+            "T0100_0200": 64,
+            "T0200_0300": 92,
+            "T0300_0330": 47,
+            "T0330_0400": 33,
+            "T0400_0500": 24,
+            "T0500_0600": 37,
+            "T0600_0730": 54,
+            "T0730_0800": 6,
+            "T0800_0900": 84,
+            "T0900_1000": 62,
+            "T1000_1030": 16,
+            "T1030_1100": 36,
+            "T1100_1200": 36
+        },
+        {
+            "PROCESS_NAME": "ASSEMBLY",
+            "QTY_TYPE": "PLAN_QTY",
+            "SAFE_RATE": 95,
+            "ALERT_RATE": 90,
+            "T0000_0030": 23,
+            "T0100_0200": 57,
+            "T0200_0300": 69,
+            "T0300_0330": 34,
+            "T0330_0400": 23,
+            "T0400_0500": 46,
+            "T0500_0600": 57,
+            "T0600_0730": 80,
+            "T0730_0800": 23,
+            "T0800_0900": 69,
+            "T0900_1000": 69,
+            "T1000_1030": 23,
+            "T1030_1100": 34,
+            "T1100_1200": 69
+        },
+        {
+            "PROCESS_NAME": "ASSEMBLY",
+            "QTY_TYPE": "REAL_QTY",
+            "SAFE_RATE": 95,
+            "ALERT_RATE": 90,
+            "T0000_0030": 16,
+            "T0100_0200": 72,
+            "T0200_0300": 80,
+            "T0300_0330": 36,
+            "T0330_0400": 38,
+            "T0400_0500": 62,
+            "T0500_0600": 50,
+            "T0600_0730": 69,
+            "T0730_0800": 5,
+            "T0800_0900": 75,
+            "T0900_1000": 52,
+            "T1000_1030": 16,
+            "T1030_1100": 17,
+            "T1100_1200": 31
+        },
+        {
+            "PROCESS_NAME": "FINAL-TEST",
+            "QTY_TYPE": "PLAN_QTY",
+            "SAFE_RATE": 95,
+            "ALERT_RATE": 90,
+            "T0000_0030": 23,
+            "T0100_0200": 57,
+            "T0200_0300": 69,
+            "T0300_0330": 34,
+            "T0330_0400": 23,
+            "T0400_0500": 46,
+            "T0500_0600": 57,
+            "T0600_0730": 80,
+            "T0730_0800": 23,
+            "T0800_0900": 69,
+            "T0900_1000": 69,
+            "T1000_1030": 23,
+            "T1030_1100": 34,
+            "T1100_1200": 69
+        },
+        {
+            "PROCESS_NAME": "FINAL-TEST",
+            "QTY_TYPE": "REAL_QTY",
+            "SAFE_RATE": 95,
+            "ALERT_RATE": 90,
+            "T0000_0030": 32,
+            "T0100_0200": 30,
+            "T0200_0300": 75,
+            "T0300_0330": 45,
+            "T0330_0400": 34,
+            "T0400_0500": 20,
+            "T0500_0600": 40,
+            "T0600_0730": 63,
+            "T0730_0800": 9,
+            "T0800_0900": 92,
+            "T0900_1000": 70,
+            "T1000_1030": 25,
+            "T1030_1100": 29,
+            "T1100_1200": 20
+        }
+    ],
+    "STD_ARCHIVE_WIP": [
+        {
+            "MO_NUMBER": "3572611722",
+            "GROUP_NAME": "HIMB CDBU",
+            "FIRST_PASS_QTY": 8782,
+            "FIRST_FAIL_QTY": 0,
+            "FIRST_PASS_RATE": "100%",
+            "TOTAL_PASS_QTY": 8782,
+            "TOTAL_FAIL_QTY": 0,
+            "TOTAL_PASS_RATE": "100%"
+        },
+        {
+            "MO_NUMBER": "3572611722",
+            "GROUP_NAME": "HVI CDBU",
+            "FIRST_PASS_QTY": 8778,
+            "FIRST_FAIL_QTY": 0,
+            "FIRST_PASS_RATE": "100%",
+            "TOTAL_PASS_QTY": 8778,
+            "TOTAL_FAIL_QTY": 0,
+            "TOTAL_PASS_RATE": "100%"
+        },
+        {
+            "MO_NUMBER": "3572611722",
+            "GROUP_NAME": "AOI_SOLDER",
+            "FIRST_PASS_QTY": 8754,
+            "FIRST_FAIL_QTY": 0,
+            "FIRST_PASS_RATE": "100%",
+            "TOTAL_PASS_QTY": 8754,
+            "TOTAL_FAIL_QTY": 0,
+            "TOTAL_PASS_RATE": "100%"
+        },
+        {
+            "MO_NUMBER": "3572611722",
+            "GROUP_NAME": "ICT CDBU",
+            "FIRST_PASS_QTY": 8646,
+            "FIRST_FAIL_QTY": 5,
+            "FIRST_PASS_RATE": "99.94%",
+            "TOTAL_PASS_QTY": 8647,
+            "TOTAL_FAIL_QTY": 4,
+            "TOTAL_PASS_RATE": "99.95%"
+        },
+        {
+            "MO_NUMBER": "3572611722",
+            "GROUP_NAME": "CASE CDBU",
+            "FIRST_PASS_QTY": 8619,
+            "FIRST_FAIL_QTY": 0,
+            "FIRST_PASS_RATE": "100%",
+            "TOTAL_PASS_QTY": 8619,
+            "TOTAL_FAIL_QTY": 0,
+            "TOTAL_PASS_RATE": "100%"
+        },
+        {
+            "MO_NUMBER": "3572611722",
+            "GROUP_NAME": "SS CDBU_01",
+            "FIRST_PASS_QTY": 8596,
+            "FIRST_FAIL_QTY": 0,
+            "FIRST_PASS_RATE": "100%",
+            "TOTAL_PASS_QTY": 8596,
+            "TOTAL_FAIL_QTY": 0,
+            "TOTAL_PASS_RATE": "100%"
+        },
+        {
+            "MO_NUMBER": "3572611722",
+            "GROUP_NAME": "SS CDBU_02",
+            "FIRST_PASS_QTY": 8560,
+            "FIRST_FAIL_QTY": 0,
+            "FIRST_PASS_RATE": "100%",
+            "TOTAL_PASS_QTY": 8560,
+            "TOTAL_FAIL_QTY": 0,
+            "TOTAL_PASS_RATE": "100%"
+        },
+        {
+            "MO_NUMBER": "3572611722",
+            "GROUP_NAME": "SS CDBU_03",
+            "FIRST_PASS_QTY": 8538,
+            "FIRST_FAIL_QTY": 0,
+            "FIRST_PASS_RATE": "100%",
+            "TOTAL_PASS_QTY": 8538,
+            "TOTAL_FAIL_QTY": 0,
+            "TOTAL_PASS_RATE": "100%"
+        },
+        {
+            "MO_NUMBER": "3572611722",
+            "GROUP_NAME": "CVI CDBU",
+            "FIRST_PASS_QTY": 8316,
+            "FIRST_FAIL_QTY": 168,
+            "FIRST_PASS_RATE": "98.01%",
+            "TOTAL_PASS_QTY": 8321,
+            "TOTAL_FAIL_QTY": 145,
+            "TOTAL_PASS_RATE": "98.28%"
+        },
+        {
+            "MO_NUMBER": "3572611722",
+            "GROUP_NAME": "ATS1 CDBU",
+            "FIRST_PASS_QTY": 8175,
+            "FIRST_FAIL_QTY": 89,
+            "FIRST_PASS_RATE": "98.92%",
+            "TOTAL_PASS_QTY": 8203,
+            "TOTAL_FAIL_QTY": 62,
+            "TOTAL_PASS_RATE": "99.24%"
+        },
+        {
+            "MO_NUMBER": "3572611722",
+            "GROUP_NAME": "BIL CDBU",
+            "FIRST_PASS_QTY": 8071,
+            "FIRST_FAIL_QTY": 0,
+            "FIRST_PASS_RATE": "100%",
+            "TOTAL_PASS_QTY": 8071,
+            "TOTAL_FAIL_QTY": 0,
+            "TOTAL_PASS_RATE": "100%"
+        },
+        {
+            "MO_NUMBER": "3572611722",
+            "GROUP_NAME": "BIU CDBU",
+            "FIRST_PASS_QTY": 8026,
+            "FIRST_FAIL_QTY": 0,
+            "FIRST_PASS_RATE": "100%",
+            "TOTAL_PASS_QTY": 8026,
+            "TOTAL_FAIL_QTY": 0,
+            "TOTAL_PASS_RATE": "100%"
+        },
+        {
+            "MO_NUMBER": "3572611722",
+            "GROUP_NAME": "AST2 CDBU",
+            "FIRST_PASS_QTY": 7965,
+            "FIRST_FAIL_QTY": 0,
+            "FIRST_PASS_RATE": "100%",
+            "TOTAL_PASS_QTY": 7965,
+            "TOTAL_FAIL_QTY": 0,
+            "TOTAL_PASS_RATE": "100%"
+        },
+        {
+            "MO_NUMBER": "3572611722",
+            "GROUP_NAME": "CREF CDBU",
+            "FIRST_PASS_QTY": 7965,
+            "FIRST_FAIL_QTY": 0,
+            "FIRST_PASS_RATE": "100%",
+            "TOTAL_PASS_QTY": 7965,
+            "TOTAL_FAIL_QTY": 0,
+            "TOTAL_PASS_RATE": "100%"
+        },
+        {
+            "MO_NUMBER": "3572611722",
+            "GROUP_NAME": "ATS2 CDBU",
+            "FIRST_PASS_QTY": 7831,
+            "FIRST_FAIL_QTY": 108,
+            "FIRST_PASS_RATE": "98.63%",
+            "TOTAL_PASS_QTY": 7869,
+            "TOTAL_FAIL_QTY": 57,
+            "TOTAL_PASS_RATE": "99.28%"
+        },
+        {
+            "MO_NUMBER": "3572611722",
+            "GROUP_NAME": "EER CDBU",
+            "FIRST_PASS_QTY": 7853,
+            "FIRST_FAIL_QTY": 10,
+            "FIRST_PASS_RATE": "99.87%",
+            "TOTAL_PASS_QTY": 7856,
+            "TOTAL_FAIL_QTY": 7,
+            "TOTAL_PASS_RATE": "99.91%"
+        },
+        {
+            "MO_NUMBER": "3572611722",
+            "GROUP_NAME": "AOI_FVI",
+            "FIRST_PASS_QTY": 7147,
+            "FIRST_FAIL_QTY": 693,
+            "FIRST_PASS_RATE": "91.16%",
+            "TOTAL_PASS_QTY": 7840,
+            "TOTAL_FAIL_QTY": 0,
+            "TOTAL_PASS_RATE": "100%"
+        },
+        {
+            "MO_NUMBER": "3572611722",
+            "GROUP_NAME": "PACKING CDBU",
+            "FIRST_PASS_QTY": 7840,
+            "FIRST_FAIL_QTY": 0,
+            "FIRST_PASS_RATE": "100%",
+            "TOTAL_PASS_QTY": 7840,
+            "TOTAL_FAIL_QTY": 0,
+            "TOTAL_PASS_RATE": "100%"
+        }
+    ]
+}
