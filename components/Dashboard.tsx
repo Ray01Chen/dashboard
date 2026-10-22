@@ -478,7 +478,9 @@ export default function Dashboard({ initialSettings }: { initialSettings: Settin
           onChange={event => setDraft({ ...draft, apiRequest: { ...draft.apiRequest, concurrentRequests: Number(event.target.value) } })} /></label>
         <label>{t.maxRequestsPerMinute}<input type="number" min="1" max="600" value={draft.apiRequest.maxRequestsPerMinute ?? 18}
           onChange={event => setDraft({ ...draft, apiRequest: { ...draft.apiRequest, maxRequestsPerMinute: Number(event.target.value) } })} /></label>
-      </div><p className="help-text">{t.rateLimitHint}</p><p className="help-text">{t.sourceHint}</p>
+        <label>{t.retryCount}<input type="number" min="0" max="10" value={draft.apiRequest.retryCount ?? 2}
+          onChange={event => setDraft({ ...draft, apiRequest: { ...draft.apiRequest, retryCount: Number(event.target.value) } })} /></label>
+      </div><p className="help-text">{t.retryCountHint}</p><p className="help-text">{t.rateLimitHint}</p><p className="help-text">{t.sourceHint}</p>
       <div className="settings-subhead"><h2>{t.factorySettings}</h2><button className="button subtle" onClick={() =>
         setFactoriesDraft([...factoriesDraft, { name: "", mesFactory: "", enabled: true, lines: [] }])}>+ {t.addFactory}</button></div>
       {factoriesDraft.map((factory, index) => <div className="factory-editor" key={index}>

@@ -63,6 +63,7 @@ async function loadLines(request: NextRequest, report?: (event: ApiProgress) => 
 async function fetchLines(selected: { factory: string; mesFactory: string; line: string }[],
   mfg: ManufacturingConfig, report?: (event: ApiProgress) => void): Promise<DashboardPayload> {
     const results: LineResult[] = selected.map(item => ({ ...item, information: null, orders: [] }));
+    const maxAttempts = mfg.request.retryCount + 1;
     let position = 0;
     let completed = 0;
     // A worker owns one line at a time: API 1 completes before API 2 for that line.
@@ -72,14 +73,14 @@ async function fetchLines(selected: { factory: string; mesFactory: string; line:
         const index = position++;
         const item = selected[index];
         const context = { factory: item.factory, line: item.line, total: selected.length };
-        report?.({ ...context, stage: "line", attempt: 0, maxAttempts: 3, completed });
+        report?.({ ...context, stage: "line", attempt: 0, maxAttempts, completed });
         try {
           results[index].information = await fetchLineInformation(mfg, item.mesFactory, item.line,
             attempt => report?.({ ...context, ...attempt, completed }));
           results[index].lineFetchedAt = new Date().toISOString();
           const currentMo = results[index].information?.CURRENT_MO?.trim();
           if (currentMo) {
-            report?.({ ...context, stage: "order", attempt: 0, maxAttempts: 3, completed });
+            report?.({ ...context, stage: "order", attempt: 0, maxAttempts, completed });
             try {
               const detail = await fetchWorkOrderDetail(mfg, currentMo, item.mesFactory,
                 attempt => report?.({ ...context, ...attempt, completed }));
@@ -97,7 +98,7 @@ async function fetchLines(selected: { factory: string; mesFactory: string; line:
           results[index].lineError = error instanceof Error ? error.message : "Line information unavailable.";
         }
         completed++;
-        report?.({ ...context, stage: "line", attempt: 0, maxAttempts: 3, completed });
+        report?.({ ...context, stage: "line", attempt: 0, maxAttempts, completed });
       }
     }
     await Promise.all(Array.from({ length: Math.min(selected.length, mfg.request.concurrentRequests) }, worker));

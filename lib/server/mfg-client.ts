@@ -95,10 +95,11 @@ async function waitForCooldown(config: ManufacturingConfig, onWait?: (retryAt: s
 async function requestToken(config: ManufacturingConfig, report?: ReportAttempt): Promise<string> {
   const { url, clientId, clientSecret } = config.oauth;
   if (!clientId || !clientSecret) throw new MesApiError(503, "OAuth credentials are missing in server configuration.");
+  const maxAttempts = config.request.retryCount + 1;
   let response: Response;
   for (let attempt = 0; ; attempt++) {
-    await waitForCooldown(config, retryAt => report?.({ stage: "oauth", attempt: attempt + 1, maxAttempts: 3, retryAt }));
-    report?.({ stage: "oauth", attempt: attempt + 1, maxAttempts: 3 });
+    await waitForCooldown(config, retryAt => report?.({ stage: "oauth", attempt: attempt + 1, maxAttempts, retryAt }));
+    report?.({ stage: "oauth", attempt: attempt + 1, maxAttempts });
     try {
       response = await fetch(url, {
         method: "POST",
@@ -109,15 +110,15 @@ async function requestToken(config: ManufacturingConfig, report?: ReportAttempt)
         body: "grant_type=client_credentials", cache: "no-store", signal: AbortSignal.timeout(config.request.timeoutMs),
       });
     } catch {
-      if (attempt < 2) { await retryPause(attempt); continue; }
-      throw new MesApiError(502, "OAuth request failed after 3 attempts. Check network or VPN access.");
+      if (attempt < config.request.retryCount) { await retryPause(attempt); continue; }
+      throw new MesApiError(502, `OAuth request failed after ${maxAttempts} ${maxAttempts === 1 ? "attempt" : "attempts"}. Check network or VPN access.`);
     }
     if (response.status === 429) {
       const until = await noteThrottle(config, response);
-      if (attempt < 2) continue;
+      if (attempt < config.request.retryCount) continue;
       throw new MesApiError(429, `OAuth rate limit reached. Next access: ${new Date(until).toISOString()}.`);
     }
-    if ([500, 502, 503, 504].includes(response.status) && attempt < 2) {
+    if ([500, 502, 503, 504].includes(response.status) && attempt < config.request.retryCount) {
       await retryPause(attempt);
       continue;
     }
@@ -154,35 +155,38 @@ const retryPause = (attempt: number) => new Promise(resolve => setTimeout(resolv
 
 async function authenticatedGet(config: ManufacturingConfig, url: string,
   stage: "line" | "order", report?: ReportAttempt): Promise<unknown> {
+  const maxAttempts = config.request.retryCount + 1;
   let authRetries = 0;
-  let gatewayRetries = 0;
+  let retries = 0;
   while (true) {
     const token = await accessToken(config, report);
     let response: Response;
-    await waitForMesSlot(config, retryAt => report?.({ stage, attempt: gatewayRetries + 1, maxAttempts: 3, retryAt }));
-    report?.({ stage, attempt: gatewayRetries + 1, maxAttempts: 3 });
+    await waitForMesSlot(config, retryAt => report?.({ stage, attempt: retries + 1, maxAttempts, retryAt }));
+    report?.({ stage, attempt: retries + 1, maxAttempts });
     try {
       response = await fetch(url, {
         headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
         cache: "no-store", signal: AbortSignal.timeout(config.request.timeoutMs),
       });
     } catch {
-      if (gatewayRetries < 2) { await retryPause(gatewayRetries++); continue; }
-      throw new MesApiError(504, "MES request timed out or could not connect after 3 attempts.");
+      if (retries < config.request.retryCount) { await retryPause(retries++); continue; }
+      throw new MesApiError(504, `MES request timed out or could not connect after ${maxAttempts} ${maxAttempts === 1 ? "attempt" : "attempts"}.`);
     }
-    if (response.status === 401 && authRetries < 1) {
-      authRetries++;
+    if (response.status === 401) {
       tokenCache = null;
-      continue;
+      if (authRetries < 1 && retries < config.request.retryCount) {
+        authRetries++;
+        retries++;
+        continue;
+      }
     }
     if (response.status === 429) {
       const until = await noteThrottle(config, response);
-      if (gatewayRetries < 2) { gatewayRetries++; continue; }
+      if (retries < config.request.retryCount) { retries++; continue; }
       throw new MesApiError(429, `MES rate limit reached. Next access: ${new Date(until).toISOString()}.`);
     }
-    if ([404, 500, 502, 503, 504].includes(response.status) && gatewayRetries < 2) {
-      gatewayRetries++;
-      await retryPause(gatewayRetries - 1);
+    if ([404, 500, 502, 503, 504].includes(response.status) && retries < config.request.retryCount) {
+      await retryPause(retries++);
       continue;
     }
     if (!response.ok) throw new MesApiError(502, `MES request failed (HTTP ${response.status}).`);

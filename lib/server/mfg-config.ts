@@ -87,13 +87,15 @@ export function validateApiRequest(value: unknown): ApiRequestSettings {
     !integer(value.tokenExpirySafetySeconds, 0, 600) ||
     !integer(value.fallbackTokenExpiresSeconds, 60, 86400) ||
     !integer(value.concurrentRequests, 1, 20) ||
-    (value.maxRequestsPerMinute !== undefined && !integer(value.maxRequestsPerMinute, 1, 600))) {
+    (value.maxRequestsPerMinute !== undefined && !integer(value.maxRequestsPerMinute, 1, 600)) ||
+    (value.retryCount !== undefined && !integer(value.retryCount, 0, 10))) {
     throw new Error("Invalid MES request settings.");
   }
   return {
     timeoutMs: value.timeoutMs, tokenExpirySafetySeconds: value.tokenExpirySafetySeconds,
     fallbackTokenExpiresSeconds: value.fallbackTokenExpiresSeconds, concurrentRequests: value.concurrentRequests,
     maxRequestsPerMinute: value.maxRequestsPerMinute ?? 18,
+    retryCount: value.retryCount ?? 2,
   };
 }
 

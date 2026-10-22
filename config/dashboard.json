@@ -39,7 +39,7 @@
   "timeZone": "Asia/Bangkok",
   "autoRefresh": {
     "enabled": true,
-    "intervalSeconds": 30,
+    "intervalSeconds": 180,
     "retryOnError": false
   }
 }

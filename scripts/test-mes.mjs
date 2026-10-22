@@ -34,7 +34,7 @@ const apiConfig = {
     workOrderDetail: { url: "https://test.invalid/api/{mesFactory}/MO/information/{mo}" },
   },
   request: { timeoutMs: 2000, tokenExpirySafetySeconds: 60, fallbackTokenExpiresSeconds: 300,
-    concurrentRequests: 4, maxRequestsPerMinute: 18 },
+    concurrentRequests: 4, maxRequestsPerMinute: 18, retryCount: 2 },
 };
 const response = (body, status = 200) => new Response(JSON.stringify(body), { status });
 function fakeClock(start) {
@@ -108,9 +108,13 @@ test("settings accept IANA zones and validate all editable MES request values", 
     /unique/);
   assert.deepEqual(config.validateApiRequest(apiConfig.request), apiConfig.request);
   assert.equal(config.validateApiRequest({ ...apiConfig.request, maxRequestsPerMinute: undefined }).maxRequestsPerMinute, 18);
+  assert.equal(config.validateApiRequest({ ...apiConfig.request, retryCount: undefined }).retryCount, 2);
+  assert.equal(config.validateApiRequest({ ...apiConfig.request, retryCount: 0 }).retryCount, 0);
   assert.throws(() => config.validateSettings({ ...settings, timeZone: "Invalid/Zone" }), /Invalid dashboard/);
   assert.throws(() => config.validateApiRequest({ ...apiConfig.request, concurrentRequests: 0 }), /Invalid MES request/);
   assert.throws(() => config.validateApiRequest({ ...apiConfig.request, maxRequestsPerMinute: 0 }), /Invalid MES request/);
+  assert.throws(() => config.validateApiRequest({ ...apiConfig.request, retryCount: -1 }), /Invalid MES request/);
+  assert.throws(() => config.validateApiRequest({ ...apiConfig.request, retryCount: 11 }), /Invalid MES request/);
 });
 
 test("line then work order flow uses both templates and retries transient MES failures", async () => {
@@ -154,6 +158,84 @@ test("MES failures remain visible after the retry limit", async () => {
   const client = loadTs("lib/server/mfg-client.ts", mockFetch, { "./mes-response": parser });
   await assert.rejects(client.fetchLineInformation(apiConfig, "DET_HP", "SNT23"), /HTTP 503/);
   assert.equal(count, 3);
+});
+
+test("zero retries stops after one OAuth or MES request", async () => {
+  const config = { ...apiConfig, request: { ...apiConfig.request, retryCount: 0 } };
+  let oauthCalls = 0;
+  const oauthClient = loadTs("lib/server/mfg-client.ts", async () => {
+    oauthCalls++;
+    throw new Error("network unavailable");
+  }, { "./mes-response": parser });
+  const oauthProgress = [];
+  await assert.rejects(oauthClient.fetchLineInformation(config, "DET_HP", "SNT23",
+    event => oauthProgress.push(event)), /after 1 attempt/);
+  assert.equal(oauthCalls, 1);
+  assert.deepEqual(oauthProgress.map(event => [event.stage, event.attempt, event.maxAttempts]),
+    [["oauth", 1, 1]]);
+
+  let lineCalls = 0;
+  const lineClient = loadTs("lib/server/mfg-client.ts", async url => {
+    if (String(url).endsWith("/oauth2/token")) return response({ access_token: "test-token", expires_in: 300 });
+    lineCalls++;
+    throw new Error("MES connection failed");
+  }, { "./mes-response": parser });
+  const lineProgress = [];
+  await assert.rejects(lineClient.fetchLineInformation(config, "DET_HP", "SNT23",
+    event => lineProgress.push(event)), /after 1 attempt/);
+  assert.equal(lineCalls, 1);
+  assert.deepEqual(lineProgress.filter(event => event.stage === "line").map(event => [event.attempt, event.maxAttempts]),
+    [[1, 1]]);
+  await assert.rejects(lineClient.fetchWorkOrderDetail(config, "3572611722", "DET_HP"), /after 1 attempt/);
+  assert.equal(lineCalls, 2);
+
+  let throttleCalls = 0;
+  const throttleClient = loadTs("lib/server/mfg-client.ts", async url => {
+    if (String(url).endsWith("/oauth2/token")) return response({ access_token: "test-token", expires_in: 300 });
+    throttleCalls++;
+    return new Response(JSON.stringify({ code: "900803" }), { status: 429,
+      headers: { "Retry-After": "60" } });
+  }, { "./mes-response": parser });
+  await assert.rejects(throttleClient.fetchLineInformation(config, "DET_HP", "SNT23"), /rate limit reached/);
+  assert.equal(throttleCalls, 1);
+});
+
+test("configured retry count limits HTTP failures and token refresh", async () => {
+  const oneRetry = { ...apiConfig, request: { ...apiConfig.request, retryCount: 1 } };
+  let lineCalls = 0;
+  const client = loadTs("lib/server/mfg-client.ts", async url => {
+    if (String(url).endsWith("/oauth2/token")) return response({ access_token: "test-token", expires_in: 300 });
+    lineCalls++;
+    return lineCalls === 1 ? response({ error: "temporary" }, 503) : response(lineFixture);
+  }, { "./mes-response": parser });
+  const progress = [];
+  await client.fetchLineInformation(oneRetry, "DET_HP", "SNT23", event => progress.push(event));
+  assert.equal(lineCalls, 2);
+  assert.deepEqual(progress.filter(event => event.stage === "line").map(event => [event.attempt, event.maxAttempts]),
+    [[1, 2], [2, 2]]);
+
+  let unauthorizedCalls = 0;
+  const noRetry = { ...apiConfig, request: { ...apiConfig.request, retryCount: 0 } };
+  const unauthorizedClient = loadTs("lib/server/mfg-client.ts", async url => {
+    if (String(url).endsWith("/oauth2/token")) return response({ access_token: "test-token", expires_in: 300 });
+    unauthorizedCalls++;
+    return response({ error: "unauthorized" }, 401);
+  }, { "./mes-response": parser });
+  await assert.rejects(unauthorizedClient.fetchLineInformation(noRetry, "DET_HP", "SNT23"), /HTTP 401/);
+  assert.equal(unauthorizedCalls, 1);
+
+  let tokenCalls = 0;
+  let authorizedCalls = 0;
+  const refreshClient = loadTs("lib/server/mfg-client.ts", async (url, options) => {
+    if (String(url).endsWith("/oauth2/token"))
+      return response({ access_token: `test-token-${++tokenCalls}`, expires_in: 300 });
+    authorizedCalls++;
+    return options.headers.Authorization === "Bearer test-token-1"
+      ? response({ error: "expired" }, 401) : response(lineFixture);
+  }, { "./mes-response": parser });
+  await refreshClient.fetchLineInformation(oneRetry, "DET_HP", "SNT23");
+  assert.equal(tokenCalls, 2);
+  assert.equal(authorizedCalls, 2);
 });
 
 test("WSO2 900803 waits until nextAccessTime instead of retrying in a burst", async () => {
@@ -398,16 +480,17 @@ test("overview streaming route sends actual retry progress and the final line re
       readDashboardConfig: async () => ({ factories: [
         factory("BP9P1", [["SNT23"]]),
       ] }),
-      readManufacturingConfig: async () => apiConfig,
+      readManufacturingConfig: async () => ({ ...apiConfig,
+        request: { ...apiConfig.request, retryCount: 1 } }),
     },
     "../../../lib/server/mfg-client": {
       fetchLineInformation: async (_config, _factory, _line, report) => {
-        report({ stage: "line", attempt: 1, maxAttempts: 3 });
-        report({ stage: "line", attempt: 2, maxAttempts: 3 });
+        report({ stage: "line", attempt: 1, maxAttempts: 2 });
+        report({ stage: "line", attempt: 2, maxAttempts: 2 });
         return parser.parseLineInformation(lineFixture);
       },
       fetchWorkOrderDetail: async (_config, _mo, _factory, report) => {
-        report({ stage: "order", attempt: 1, maxAttempts: 3 });
+        report({ stage: "order", attempt: 1, maxAttempts: 2 });
         return parser.parseWorkOrderResponse(orderFixture);
       },
     },
@@ -417,6 +500,7 @@ test("overview streaming route sends actual retry progress and the final line re
   const events = (await response.text()).trim().split("\n").map(JSON.parse);
   assert.deepEqual(events.filter(event => event.type === "progress" && event.attempt)
     .map(event => [event.stage, event.attempt]), [["line", 1], ["line", 2], ["order", 1]]);
+  assert.ok(events.filter(event => event.type === "progress").every(event => event.maxAttempts === 2));
   assert.equal(events.at(-1).data.lines[0].information.CURRENT_MO, lineFixture.CURRENT_MO);
   assert.equal(events.at(-1).data.lines[0].orders[0].TARGET_QTY, 10000);
   assert.equal(events.at(-1).data.lines[0].orders.length, 5);
@@ -435,12 +519,13 @@ test("server settings are read again after saving without a process restart", as
     assert.equal((await config.readManufacturingConfig()).request.concurrentRequests, 4);
     assert.equal((await config.readDashboardConfig()).autoRefresh.retryOnError, false);
     await config.writeApiRequest({ ...apiConfig.request, concurrentRequests: 2,
-      maxRequestsPerMinute: 12, timeoutMs: 4000 });
+      maxRequestsPerMinute: 12, retryCount: 0, timeoutMs: 4000 });
     await config.writeDashboardConfig({ ...dashboard, timeZone: "Asia/Taipei",
       autoRefresh: { ...dashboard.autoRefresh, retryOnError: true },
       factories: [factory("BP9P1", [["SNT23"], ["SNT24", false]])] });
     assert.equal((await config.readManufacturingConfig()).request.concurrentRequests, 2);
     assert.equal((await config.readManufacturingConfig()).request.maxRequestsPerMinute, 12);
+    assert.equal((await config.readManufacturingConfig()).request.retryCount, 0);
     assert.equal((await config.readManufacturingConfig()).request.timeoutMs, 4000);
     assert.deepEqual((await config.readDashboardConfig()).factories[0].lines,
       [{ name: "SNT23", enabled: true }, { name: "SNT24", enabled: false }]);

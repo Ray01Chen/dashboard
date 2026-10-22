@@ -16,14 +16,15 @@ async function loadOrders(request: NextRequest, report?: (event: ApiProgress) =>
       item.lines.some(itemLine => itemLine.name === line && itemLine.enabled));
     if (!factory) throw new MesApiError(400, "Factory or line is not monitored.");
     const mfg = await readManufacturingConfig();
+    const maxAttempts = mfg.request.retryCount + 1;
     const context = { factory: factoryName, line, total: 2, completed: 0 };
-    report?.({ ...context, stage: "line", attempt: 0, maxAttempts: 3 });
+    report?.({ ...context, stage: "line", attempt: 0, maxAttempts });
     const information = await fetchLineInformation(mfg, factory.mesFactory, line,
       attempt => report?.({ ...context, ...attempt }));
     const currentMo = information.CURRENT_MO?.trim();
     if (!currentMo) return { orders: [], currentMo: "", fetchedAt: new Date().toISOString() };
     context.completed = 1;
-    report?.({ ...context, stage: "order", attempt: 0, maxAttempts: 3 });
+    report?.({ ...context, stage: "order", attempt: 0, maxAttempts });
     const detail = await fetchWorkOrderDetail(mfg, currentMo, factory.mesFactory,
       attempt => report?.({ ...context, ...attempt }));
     if (!detail.MESSAGE.some(order => order.MO_NUMBER === currentMo))

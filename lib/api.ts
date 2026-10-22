@@ -17,6 +17,7 @@ export type ApiRequestSettings = {
   fallbackTokenExpiresSeconds: number;
   concurrentRequests: number;
   maxRequestsPerMinute: number;
+  retryCount: number;
 };
 
 export type SettingsPayload = DashboardSettings & { apiRequest: ApiRequestSettings };

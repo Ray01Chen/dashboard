@@ -34,6 +34,9 @@ if (api.request.maxRequestsPerMinute !== undefined) assert.ok(
   Number.isInteger(api.request.maxRequestsPerMinute) &&
   api.request.maxRequestsPerMinute >= 1 && api.request.maxRequestsPerMinute <= 600,
   "Invalid maxRequestsPerMinute");
+if (api.request.retryCount !== undefined) assert.ok(
+  Number.isInteger(api.request.retryCount) && api.request.retryCount >= 0 && api.request.retryCount <= 10,
+  "Invalid retryCount");
 
 // Fixtures verify the two response shapes; runtime requests only use the MES APIs.
 const line = json(path.join(root, "data/production-lines.sample.json"));
