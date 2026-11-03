@@ -4,7 +4,7 @@ MES dashboard for selected factories and production lines. Select an enabled fac
 
 ## Run
 
-Requires Git and Node.js **20.9 or later**; Node.js **24 LTS** is recommended and selected by `.nvmrc` when using nvm. Check `node --version` and `npm --version` first. If either command is missing, install Node.js and reopen your terminal.
+Requires Git and Node.js **20.9 or later**; Node.js **24 LTS** is recommended and selected by `.nvmrc` when using nvm. Check `node --version` and `npm --version` first (`npm.cmd --version` in Windows PowerShell). If either command is missing, install Node.js and reopen your terminal.
 
 ### 新主機第一次安裝 / First setup
 
@@ -41,6 +41,27 @@ If the page reports **Missing server mfg-api.json**, run setup and configure the
 
 Runtime requests never read sample or example files. The files in `data/` are fixtures for contract tests only.
 Development output is written to `.next-dev`, while `npm run build` writes to `.next`. A build can run while the development server is open without replacing its page files.
+
+### Windows PowerShell：npm.ps1 被封鎖
+
+如果出現 `npm.ps1 cannot be loaded because running scripts is disabled`，請將所有指令的 `npm` 改成 `npm.cmd`，明確執行 Node.js 隨附的 Windows 命令。這樣不必修改 PowerShell 執行原則；只增加 `PATH` 無法解決腳本被封鎖的問題。
+
+在專案目錄執行：
+
+```powershell
+git pull --ff-only
+npm.cmd ci
+npm.cmd run setup
+```
+
+依照前述步驟複製原主機的 `config/mfg-api.json` 或填入 OAuth 憑證，再執行：
+
+```powershell
+npm.cmd run check:config
+npm.cmd run dev
+```
+
+正式部署使用 `npm.cmd run build`，成功後執行 `npm.cmd start`。PowerShell allows selecting an executable by its extension; see Microsoft's [command precedence documentation](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_command_precedence#find-hidden-commands).
 
 ## Live API configuration
 
