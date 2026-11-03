@@ -18,7 +18,12 @@ const integer = (value: unknown, min: number, max: number): value is number =>
 async function readJson(file: string): Promise<Record<string, unknown>> {
   let value: unknown;
   try { value = JSON.parse(await readFile(path.join(configDirectory(), file), "utf8")); }
-  catch { throw new Error(`Cannot read valid config/${file}.`); }
+  catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      throw new Error(`Missing server ${file}. Run npm run setup, then configure mfg-api.json or copy it from your existing server.`);
+    }
+    throw new Error(`Cannot read valid config/${file}.`);
+  }
   if (!record(value)) throw new Error(`config/${file} must contain a JSON object.`);
   return value;
 }
@@ -134,9 +139,11 @@ export async function readManufacturingConfig(): Promise<ManufacturingConfig> {
   const detailUrl = record(detail) ? detail.url : undefined;
   const clientId = oauth.clientId;
   const clientSecret = oauth.clientSecret;
+  if (typeof clientId !== "string" || !clientId.trim() || typeof clientSecret !== "string" || !clientSecret.trim()) {
+    throw new Error("Missing OAuth credentials. Set oauth.clientId and oauth.clientSecret in server mfg-api.json, or copy that file from your existing server.");
+  }
   if (!httpsTemplate(oauthUrl, []) || !httpsTemplate(lineUrl, ["mesFactory", "line"]) ||
-    !httpsTemplate(detailUrl, ["mesFactory", "mo"]) || typeof clientId !== "string" || !clientId ||
-    typeof clientSecret !== "string" || !clientSecret) {
+    !httpsTemplate(detailUrl, ["mesFactory", "mo"])) {
     throw new Error("Invalid manufacturing API endpoint or request settings.");
   }
   return {

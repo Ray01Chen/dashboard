@@ -1,0 +1,23 @@
+{
+  "oauth": {
+    "url": "https://mfg-apim-th.deltaww.com/oauth2/token",
+    "clientId": "",
+    "clientSecret": ""
+  },
+  "apis": {
+    "lineInformation": {
+      "url": "https://mfg-apim-gateway-th.deltaww.com/DETMFGAPI/BP3_AE/v1/api/{mesFactory}/line/information/{line}"
+    },
+    "workOrderDetail": {
+      "url": "https://mfg-apim-gateway-th.deltaww.com/DETMFGAPI/BP3_AE/v1/api/{mesFactory}/MO/information/{mo}"
+    }
+  },
+  "request": {
+    "timeoutMs": 20000,
+    "tokenExpirySafetySeconds": 60,
+    "fallbackTokenExpiresSeconds": 300,
+    "concurrentRequests": 4,
+    "maxRequestsPerMinute": 18,
+    "retryCount": 2
+  }
+}

@@ -4,15 +4,42 @@ MES dashboard for selected factories and production lines. Select an enabled fac
 
 ## Run
 
-Requires Node.js 20 or later. Keep `config/mfg-api.json` on the server; it is ignored by Git because it contains OAuth credentials.
+Requires Git and Node.js **20.9 or later**; Node.js **24 LTS** is recommended and selected by `.nvmrc` when using nvm. Check `node --version` and `npm --version` first. If either command is missing, install Node.js and reopen your terminal.
+
+### 新主機第一次安裝 / First setup
 
 ```bash
-npm install
+git clone https://github.com/Ray01Chen/dashboard.git
+cd dashboard
+npm ci
+npm run setup
+```
+
+已有專案的主機先執行 `git pull --ff-only`，再執行 `npm ci` 和 `npm run setup`。
+
+**啟動前必須設定 MES 憑證。** `npm run setup` 會從 Git 內的 `config/mfg-api.example.json` 建立本機的 `config/mfg-api.json`。請將原主機可用的 `config/mfg-api.json` 安全複製到新主機的相同位置，取代空白範本；也可以手動填入 `oauth.clientId`、`oauth.clientSecret`，並確認 API 網址。搬移時若也要保留原主機的工廠、產線與更新設定，請一併複製 `config/dashboard.json`。新主機還必須能透過公司網路或 VPN 連線到 MES。
+
+Before starting, copy `config/mfg-api.json` from the working server or fill in its OAuth credentials. This file is intentionally ignored by Git because it contains secrets; a clone includes the template, not the credentials. Setup preserves existing configuration and also initializes both files in `MES_CONFIG_DIR` when that variable points to a separate configuration directory. Use the same variable for setup, checks, and the server.
+
+設定完成後 / After configuring credentials:
+
+```bash
 npm run check:config
 npm run dev
 ```
 
-Open http://localhost:3000. Runtime requests never read sample or example files. The files in `data/` are fixtures for contract tests only.
+Open http://localhost:3000. For a production server:
+
+```bash
+npm run build
+npm start
+```
+
+`npm start` requires a successful build on that host. Install all dependencies with `npm ci` before building. `node_modules/`, `.next/`, and `.next-dev/` are generated locally rather than downloaded from Git; `package-lock.json` is tracked so `npm ci` installs the recorded versions for the host's operating system.
+
+If the page reports **Missing server mfg-api.json**, run setup and configure the credentials as above. **Missing OAuth credentials** means the generated file still has blank credentials. A valid config check confirms the file format, not network connectivity or whether MES accepts the credentials.
+
+Runtime requests never read sample or example files. The files in `data/` are fixtures for contract tests only.
 Development output is written to `.next-dev`, while `npm run build` writes to `.next`. A build can run while the development server is open without replacing its page files.
 
 ## Live API configuration

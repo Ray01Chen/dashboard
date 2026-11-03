@@ -3,8 +3,17 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = process.cwd();
-const configDir = process.env.MES_CONFIG_DIR || path.join(root, "config");
-const json = file => JSON.parse(fs.readFileSync(file, "utf8"));
+const configDir = path.resolve(process.env.MES_CONFIG_DIR || path.join(root, "config"));
+const json = file => {
+  try { return JSON.parse(fs.readFileSync(file, "utf8")); }
+  catch (error) {
+    console.error(`Cannot read valid JSON: ${file}`);
+    console.error(error.code === "ENOENT"
+      ? "Run npm run setup to create server configuration, then fill in the OAuth credentials or copy mfg-api.json from your existing server."
+      : "Check that the file is readable and contains valid JSON.");
+    process.exit(1);
+  }
+};
 const settings = json(path.join(configDir, "dashboard.json"));
 const api = json(path.join(configDir, "mfg-api.json"));
 const validZone = zone => { try { new Intl.DateTimeFormat("en", { timeZone: zone }); return true; } catch { return false; } };
@@ -22,8 +31,9 @@ assert.ok(typeof settings.autoRefresh.enabled === "boolean" &&
   settings.autoRefresh.intervalSeconds >= 5 && settings.autoRefresh.intervalSeconds <= 3600,
   "Invalid refresh interval");
 assert.ok(api.oauth.url === "https://mfg-apim-th.deltaww.com/oauth2/token", "Unexpected OAuth URL");
-assert.ok(typeof api.oauth.clientId === "string" && api.oauth.clientId &&
-  typeof api.oauth.clientSecret === "string" && api.oauth.clientSecret, "Missing OAuth credentials");
+assert.ok(typeof api.oauth.clientId === "string" && api.oauth.clientId.trim() &&
+  typeof api.oauth.clientSecret === "string" && api.oauth.clientSecret.trim(),
+  "Missing OAuth credentials. Set oauth.clientId and oauth.clientSecret in server mfg-api.json, or copy that file from your existing server.");
 assert.ok(api.apis.lineInformation.url.includes("/{mesFactory}/line/information/{line}"), "Line URL needs MES factory and line");
 assert.ok(api.apis.workOrderDetail.url.includes("/{mesFactory}/MO/information/{mo}"), "Work order URL needs MES factory and order");
 for (const [key, min, max] of [

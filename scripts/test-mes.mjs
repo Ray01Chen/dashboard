@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -536,6 +537,72 @@ test("server settings are read again after saving without a process restart", as
     else process.env.MES_CONFIG_DIR = previous;
     fs.unlinkSync(path.join(temp, "mfg-api.json"));
     fs.unlinkSync(path.join(temp, "dashboard.json"));
+    fs.rmdirSync(temp);
+  }
+});
+
+test("setup initializes an external config directory and preserves existing server settings and credentials", () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "mes-setup-test-"));
+  const configDir = path.join(temp, "server config");
+  const run = script => spawnSync(process.execPath, [path.join(root, "scripts", script)], {
+    cwd: root, encoding: "utf8", env: { ...process.env, MES_CONFIG_DIR: configDir },
+  });
+  try {
+    const setup = run("setup.mjs");
+    assert.equal(setup.status, 0, setup.stderr);
+    const apiFile = path.join(configDir, "mfg-api.json");
+    const settingsFile = path.join(configDir, "dashboard.json");
+    const api = JSON.parse(fs.readFileSync(apiFile, "utf8"));
+    assert.deepEqual(api, json("config/mfg-api.example.json"));
+    assert.equal(api.oauth.clientId, "");
+    assert.equal(api.oauth.clientSecret, "");
+    assert.deepEqual(JSON.parse(fs.readFileSync(settingsFile, "utf8")), json("config/dashboard.json"));
+
+    api.oauth.clientId = "test-client";
+    api.oauth.clientSecret = "test-secret";
+    const credentials = JSON.stringify(api);
+    const settings = JSON.stringify({ ...json("config/dashboard.json"), timeZone: "Asia/Taipei" });
+    fs.writeFileSync(apiFile, credentials);
+    fs.writeFileSync(settingsFile, settings);
+    const repeated = run("setup.mjs");
+    assert.equal(repeated.status, 0, repeated.stderr);
+    assert.equal(fs.readFileSync(apiFile, "utf8"), credentials);
+    assert.equal(fs.readFileSync(settingsFile, "utf8"), settings);
+    const check = run("check-config.mjs");
+    assert.equal(check.status, 0, check.stderr);
+    assert.match(check.stdout, /PASS:/);
+    assert.doesNotMatch(setup.stdout + repeated.stdout + check.stdout, /test-secret/);
+  } finally {
+    for (const name of ["mfg-api.json", "dashboard.json"]) fs.rmSync(path.join(configDir, name), { force: true });
+    if (fs.existsSync(configDir)) fs.rmdirSync(configDir);
+    fs.rmdirSync(temp);
+  }
+});
+
+test("a fresh checkout explains missing configuration and rejects blank OAuth credentials before making API requests", async () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "mes-missing-config-test-"));
+  const previous = process.env.MES_CONFIG_DIR;
+  const run = script => spawnSync(process.execPath, [path.join(root, "scripts", script)], {
+    cwd: root, encoding: "utf8", env: { ...process.env, MES_CONFIG_DIR: temp },
+  });
+  try {
+    process.env.MES_CONFIG_DIR = temp;
+    const config = loadTs("lib/server/mfg-config.ts");
+    const missing = run("check-config.mjs");
+    assert.equal(missing.status, 1);
+    assert.match(missing.stderr, /Run npm run setup/);
+    await assert.rejects(config.readManufacturingConfig(), /Missing server mfg-api.json.*npm run setup/);
+
+    const setup = run("setup.mjs");
+    assert.equal(setup.status, 0, setup.stderr);
+    const blank = run("check-config.mjs");
+    assert.equal(blank.status, 1);
+    assert.match(blank.stderr, /Missing OAuth credentials.*oauth.clientId.*oauth.clientSecret/);
+    await assert.rejects(config.readManufacturingConfig(), /Missing OAuth credentials/);
+  } finally {
+    if (previous === undefined) delete process.env.MES_CONFIG_DIR;
+    else process.env.MES_CONFIG_DIR = previous;
+    for (const name of ["mfg-api.json", "dashboard.json"]) fs.rmSync(path.join(temp, name), { force: true });
     fs.rmdirSync(temp);
   }
 });
